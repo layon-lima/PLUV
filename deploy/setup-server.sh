@@ -62,13 +62,27 @@ unset DB_PASS
 
 echo "Preparando API (somente em 127.0.0.1:8001)..."
 docker compose -f "$COMPOSE" up -d --build
-echo "Aguardando a API responder localmente..."
-if ! curl --silent --show-error --fail --retry 12 --retry-delay 2 --retry-connrefused "http://127.0.0.1:8001/health"; then
+echo "Aguardando a API inicializar (ate 120 segundos)..."
+READY=0
+for attempt in $(seq 1 60); do
+  if curl --silent --fail --max-time 3 "http://127.0.0.1:8001/health" > /dev/null 2>&1; then
+    READY=1
+    break
+  fi
+  sleep 2
+done
+if [[ "$READY" -ne 1 ]]; then
   echo ""
-  echo "ERRO: API nao respondeu. Ultimos logs:"
-  docker compose -f "$COMPOSE" logs --no-color --tail=50 api
+  echo "ERRO: API nao respondeu depois de esperar inicializacao."
+  echo "--- STATUS DOS CONTEINERES ---"
+  docker compose -f "$COMPOSE" ps -a || true
+  echo "--- LOGS DO CONTEINER PLUV ---"
+  docker compose -f "$COMPOSE" logs --no-color --tail=100 api || true
+  echo "--- TESTE HTTP LOCAL ---"
+  curl -v --max-time 5 "http://127.0.0.1:8001/health" 2>&1 || true
   exit 1
 fi
+echo "API respondeu ao health check."
 echo ""
 echo "API PLUV iniciada e respondendo localmente; PostgreSQL existente preservado."
 echo "Para criar o primeiro administrador, execute:"
