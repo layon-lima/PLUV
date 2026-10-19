@@ -81,6 +81,9 @@ interface PluvDao {
     @Query("SELECT * FROM outbox ORDER BY rowid ASC LIMIT 1")
     suspend fun nextPending(): PendingOperation?
 
+    @Query("SELECT * FROM outbox WHERE id = :opId LIMIT 1")
+    suspend fun getPending(opId: String): PendingOperation?
+
     @Query("SELECT COUNT(*) FROM outbox WHERE entityId = :entityId")
     suspend fun pendingCount(entityId: String): Long
 
