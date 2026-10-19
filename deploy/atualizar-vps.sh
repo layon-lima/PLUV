@@ -7,24 +7,21 @@ fi
 
 ROOT="/opt/apps/pluviometros"
 SOURCE="$ROOT/source"
-KEY="/root/.ssh/pluv_deploy_ed25519"
-
-if [[ ! -f "$KEY" ]]; then
-  echo "Chave de deploy SSH nao encontrada em $KEY"; exit 1
-fi
-chmod 600 "$KEY"
-export GIT_SSH_COMMAND="ssh -i $KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+REPO="https://github.com/layon-lima/PLUV.git"
 
 if [[ ! -d "$SOURCE/.git" ]]; then
-  echo "O clone do PLUV ainda nao foi feito em $SOURCE"; exit 1
+  echo "Baixando PLUV da branch main..."
+  mkdir -p "$ROOT"
+  git clone --depth 1 --branch main "$REPO" "$SOURCE"
+else
+  echo "Atualizando a branch main do PLUV..."
+  git -C "$SOURCE" remote set-url origin "$REPO"
+  git -C "$SOURCE" pull --ff-only origin main
 fi
 
-echo "Atualizando a branch main do PLUV..."
-git -C "$SOURCE" pull --ff-only origin main
-
-echo "Instalando ou atualizando API sem excluir dados..."
+echo "Instalando/atualizando API sem remover o PostgreSQL existente..."
 bash "$SOURCE/deploy/setup-server.sh"
 
 echo ""
-echo "API pronta para uso interno (loopback)."
-echo "Publicacao externa HTTPS deve ser configurada separadamente."
+echo "API PLUV respondendo somente na VPS (127.0.0.1:8001)."
+echo "Ainda sera necessario configurar HTTPS externo, backups e demais protecoes."
