@@ -15,9 +15,10 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 class SecureConfig(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("pluv_connection", Context.MODE_PRIVATE)
     private val alias = "pluv_access_token_v1"
+    private val defaultApiUrl = "https://pluv.fazendanovohorizonte.com"
 
     var baseUrl: String
-        get() = prefs.getString("base_url", "") ?: ""
+        get() = prefs.getString("base_url", defaultApiUrl) ?: defaultApiUrl
         set(value) {
             val cleaned = value.trim().trimEnd('/')
             val url = cleaned.toHttpUrlOrNull()
