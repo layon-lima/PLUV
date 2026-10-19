@@ -1,6 +1,7 @@
 // Banco local do PLUV. Cada mudanca e registrada na mesma transacao que atualiza a tela.
 const NAME='pluv-offline-pwa';
-export const API=(location.hostname==='localhost'||location.hostname==='127.0.0.1')?'https://pluv.fazendanovohorizonte.com':location.origin;
+// Todos os clientes PLUV usam a mesma API central na VPS, inclusive a prévia local.
+export const API='https://pluv.fazendanovohorizonte.com';
 let dbPromise;
 export function uid(){return crypto.randomUUID()}
 function req(request){return new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)})}
