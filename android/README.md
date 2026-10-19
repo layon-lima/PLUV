@@ -1,15 +1,22 @@
-# Android nativo — fase posterior à aprovação da interface
+# PLUV Android nativo — estado do desenvolvimento
 
-O APK ainda não está implementado. A proposta técnica é Kotlin + Jetpack Compose + Room/SQLite + WorkManager.
+Código inicial em Kotlin + Jetpack Compose + Room/SQLite + WorkManager. Os componentes principais estão em `app/src/main/java/com/pluv/app`:
 
-## Regras não negociáveis
+- `MainActivity.kt`: telas de lista, detalhes, cadastro de pluviômetros, registro de chuvas e conexão.
+- `PluvDatabase.kt`: banco local SQLite/Room, pluviômetros, medições, fila persistente e cursor de sincronização.
+- `PluvRepository.kt`: gravação local transacional de dados e das operações pendentes.
+- `PluvSyncWorker.kt`: envia alterações por HTTPS, recebe atualizações e agenda novas tentativas.
+- `SecureConfig.kt`: guarda o token cifrado com o Android Keystore, em vez de embutir senhas.
 
-- Cadastro de pluviômetros, lançamento e histórico de chuva funcionam offline, sem aguardar servidor.
-- Operações são gravadas transacionalmente no Room junto com uma fila local persistente (outbox).
-- Cada item e cada operação têm UUID estável. Repetir o envio não cria duplicatas.
-- Sincronizar /sync/push em segundo plano com WorkManager quando Android permitir e houver internet; não prometer execução imediata.
-- Só retirar item da fila após resposta accepted. No caso conflict, apresentar divergência para resolução, sem apagar alteração local.
-- Após o push, aplicar /sync/pull e cursor em uma única transação Room, incluindo exclusões e alterações de outros usuários.
-- A primeira autenticação requer rede. Registros offline após primeira instalação não devem exigir login online, respeitando políticas de acesso local.
-- Dados no app podem ser compartilhados entre usuários autorizados do banco central, mas nunca diretamente expor o PostgreSQL.
-- Segredos do servidor nunca ficam no código do aplicativo. Sessão deve ser mantida no armazenamento seguro oferecido pelo Android.
+**Estado:** código-fonte enviado à main, ainda sem APK compilado ou teste de integração com a VPS. A lógica de conflitos guarda divergências, mas a interface de resolução ainda não está concluída. Portanto ainda não é uma versão de produção.
+
+## Requisitos de validação final
+
+- Compilar com Android SDK/Gradle compatíveis (projeto usa Gradle 8.13 / AGP 8.11.1), gerar wrapper completo.
+- Instalar APK e testar salvamento/edição/exclusão sem internet.
+- Testar milhares de registros, reinício do app e do celular, e envio após retorno da internet.
+- Verificar idempotência, alterações em vários aparelhos, conflitos, autenticação, expiração de sessão e backups.
+- Conferir integridade após interrupção e repetição de envios.
+- Garantir que só usuários autorizados sincronizam e que o PostgreSQL não é exposto.
+
+O aplicativo offline não depende de servidor para gravar medições. A sincronização, login inicial e consultas compartilhadas dependem de conexão e de API HTTPS ativa.
