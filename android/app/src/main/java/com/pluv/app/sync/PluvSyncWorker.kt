@@ -46,7 +46,8 @@ class PluvSyncWorker(context: Context, params: WorkerParameters) : CoroutineWork
                     val response = api.send("POST", "/sync/push", req)
                     val item = response.getJSONArray("results").getJSONObject(0)
                     if (item.getString("status") != "accepted") {
-                        db.dao().markConflict(op.id, item.optString("reason", "conflict"))
+                        db.dao().markConflict(op.id, item.optString("reason", "conflict"),
+                            item.optJSONObject("server")?.toString() ?: "")
                         return@withContext
                     }
                     val acceptedVersion = item.getLong("version")
@@ -64,38 +65,57 @@ class PluvSyncWorker(context: Context, params: WorkerParameters) : CoroutineWork
                     }
                 }
 
-                // Cursor e dados sao salvos na MESMA transacao do Room.
+                // O cursor avanca somente ate mudancas efetivamente aplicadas.
+                // Se um item tem edicoes locais pendentes, mantemos o cursor antes dele.
+                // Dessa forma alteracoes remotas nao se perdem em sincronizacoes futuras.
                 while (true) {
                     val cursor = db.dao().syncState()?.cursor ?: 0
                     val response = api.send("GET", "/sync/pull?after=" + cursor + "&limit=200")
                     val changes = response.getJSONArray("changes")
+                    var blockedByLocalChange = false
+                    var appliedCursor = cursor
+
                     db.withTransaction {
                         for (i in 0 until changes.length()) {
                             val change = changes.getJSONObject(i)
                             val id = change.getString("entity_id")
-                            // Nunca sobreescreva um registro que ainda tenha operacoes locais nao enviadas.
-                            if (db.dao().pendingCount(id) > 0) continue
+                            if (db.dao().pendingCount(id) > 0) {
+                                blockedByLocalChange = true
+                                break
+                            }
+
                             val payload = change.getJSONObject("data")
                             val version = payload.getLong("version")
                             val deleted = !payload.isNull("deleted_at")
                             if (change.getString("kind") == "gauge") {
-                                db.dao().putGauge(
-                                    Gauge(id, payload.getString("name"),
-                                        payload.optString("location"),
-                                        payload.optString("description"), version, deleted)
-                                )
+                                val current = db.dao().getGauge(id)
+                                if (current == null || current.version < version) {
+                                    db.dao().putGauge(Gauge(
+                                        id = id,
+                                        name = payload.getString("name"),
+                                        location = payload.optString("location"),
+                                        description = payload.optString("description"),
+                                        version = version, deleted = deleted
+                                    ))
+                                }
                             } else {
-                                db.dao().putReading(
-                                    Reading(id, payload.getString("gauge_id"),
-                                        payload.getDouble("amount_mm"),
-                                        payload.getString("observed_at"),
-                                        payload.optString("notes"), version, deleted)
-                                )
+                                val current = db.dao().getReading(id)
+                                if (current == null || current.version < version) {
+                                    db.dao().putReading(Reading(
+                                        id = id,
+                                        gaugeId = payload.getString("gauge_id"),
+                                        amountMm = payload.getDouble("amount_mm"),
+                                        observedAt = payload.getString("observed_at"),
+                                        notes = payload.optString("notes"),
+                                        version = version, deleted = deleted
+                                    ))
+                                }
                             }
+                            appliedCursor = change.getLong("cursor")
                         }
-                        db.dao().putSyncState(SyncState(cursor = response.getLong("next_cursor")))
+                        db.dao().putSyncState(SyncState(cursor = appliedCursor))
                     }
-                    if (!response.getBoolean("has_more")) break
+                    if (blockedByLocalChange || !response.getBoolean("has_more") || appliedCursor == cursor) break
                 }
             }
             Result.success()
