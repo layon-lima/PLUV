@@ -1,6 +1,6 @@
 # PLUV Android nativo — estado do desenvolvimento
 
-Código inicial em Kotlin + Jetpack Compose + Room/SQLite + WorkManager. Os componentes principais estão em `app/src/main/java/com/pluv/app`:
+Código Android em Kotlin + Jetpack Compose + Room/SQLite + WorkManager. O aplicativo ainda precisa de compilação real e validação em aparelhos. Os componentes principais estão em `app/src/main/java/com/pluv/app`:
 
 - `MainActivity.kt`: telas de lista, detalhes, cadastro de pluviômetros, registro de chuvas e conexão.
 - `PluvDatabase.kt`: banco local SQLite/Room, pluviômetros, medições, fila persistente e cursor de sincronização.
@@ -20,3 +20,15 @@ Código inicial em Kotlin + Jetpack Compose + Room/SQLite + WorkManager. Os comp
 - Garantir que só usuários autorizados sincronizam e que o PostgreSQL não é exposto.
 
 O aplicativo offline não depende de servidor para gravar medições. A sincronização, login inicial e consultas compartilhadas dependem de conexão e de API HTTPS ativa.
+
+## Gerar o APK no Windows
+
+Foi adicionado `GERAR_APK.ps1`: execute na pasta `android` em um PC com Android Studio + SDK 35 para baixar Gradle 8.13 e gerar `app/build/outputs/apk/debug/app-debug.apk` sem GitHub Actions. Veja `COMPILAR_APK.md`.
+
+O aplicativo utiliza `https://pluv.fazendanovohorizonte.com` como URL padrão para autenticação e sincronização.
+
+## Segurança de sincronização
+
+- A fila offline é persistente e enviada na ordem de inserção.
+- O cursor remoto não avança sobre alterações conflitantes ainda não aplicadas.
+- Conflitos são mantidos até o usuário escolher **Manter alteração do celular** ou **Usar versão do servidor**; se o servidor não retornou dados suficientes, o lançamento permanece protegido e pendente de suporte.
