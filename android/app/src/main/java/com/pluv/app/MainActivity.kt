@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pluv.app.data.Gauge
 import com.pluv.app.data.Reading
+import com.pluv.app.data.PendingOperation
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -88,6 +89,7 @@ private fun PluvScreen(vm: PluvViewModel = viewModel()) {
     var settings by remember { mutableStateOf(false) }
     var removeGauge by remember { mutableStateOf(false) }
     var removeReading by remember { mutableStateOf<Reading?>(null) }
+    var resolvePending by remember { mutableStateOf<PendingOperation?>(null) }
 
     LaunchedEffect(message) {
         if (message != null) {
@@ -120,8 +122,21 @@ private fun PluvScreen(vm: PluvViewModel = viewModel()) {
                     Text("Pendentes: " + pending.size, color = Color(0xFF166544))
                 }
             }
-            if (pending.any { it.conflict.isNotBlank() }) {
-                Text("⚠ Conflito de sincronização. Seus dados locais permanecem salvos.", color = Color(0xFFAA4A23))
+            val conflicts = pending.filter { it.conflict.isNotBlank() }
+            if (conflicts.isNotEmpty()) {
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF2DC))) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Text("⚠ Existem " + conflicts.size + " conflitos de sincronização", fontWeight = FontWeight.Bold,
+                            color = Color(0xFF955519))
+                        Text("Seus registros continuam salvos no celular. Escolha como resolver cada divergência.",
+                            style = MaterialTheme.typography.bodySmall, color = Color(0xFF955519))
+                        conflicts.forEach { op ->
+                            OutlinedButton(onClick = { resolvePending = op }) {
+                                Text(if (op.kind == "gauge") "Resolver pluviômetro" else "Resolver medição")
+                            }
+                        }
+                    }
+                }
             }
             if (current == null) {
                 Text("Visão geral", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -213,6 +228,37 @@ private fun PluvScreen(vm: PluvViewModel = viewModel()) {
     if (settings) {
         ServerDialog(vm.savedServer(), username, pending.size, busy, { settings = false },
             { server, user, pass -> vm.login(server, user, pass) }, { vm.synchronize() })
+    }
+    resolvePending?.let { op ->
+        AlertDialog(
+            onDismissRequest = { resolvePending = null },
+            title = { Text("Conflito de sincronização") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("O registro foi alterado no servidor enquanto havia mudanças no seu celular.")
+                    Text("Nenhum dado foi descartado automaticamente.", color = gray)
+                    if (op.serverPayload.isBlank()) {
+                        Text("A API não retornou a versão atual deste registro. A alteração local continuará pendente.", color = Color(0xFFAA4A23))
+                    } else {
+                        OutlinedButton(onClick = {
+                            vm.resolveConflict(op, keepLocal = true)
+                            resolvePending = null
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Manter alteração do celular")
+                        }
+                        OutlinedButton(onClick = {
+                            vm.resolveConflict(op, keepLocal = false)
+                            resolvePending = null
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Usar versão do servidor")
+                        }
+                        Text("Usar a versão do servidor substitui as edições locais pendentes deste registro.",
+                            style = MaterialTheme.typography.labelSmall, color = gray)
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { resolvePending = null }) { Text("Cancelar") } }
+        )
     }
     if (removeGauge && selected != null) {
         AlertDialog(
@@ -332,8 +378,8 @@ private fun ServerDialog(server: String, username: String, pending: Int, busy: B
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Os registros funcionam offline e serão enviados à API quando houver rede.",
                     color = gray, style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(url, { url = it }, label = { Text("Endereço HTTPS da API") },
-                    placeholder = { Text("https://api.exemplo.com") }, singleLine = true)
+                OutlinedTextField(url, { url = it }, label = { Text("Servidor PLUV") },
+                    readOnly = true, singleLine = true)
                 OutlinedTextField(user, { user = it }, label = { Text("Usuário") }, singleLine = true)
                 OutlinedTextField(password, { password = it }, label = { Text("Senha") },
                     visualTransformation = PasswordVisualTransformation(), singleLine = true)
