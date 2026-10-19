@@ -19,10 +19,15 @@ if ! curl --silent --fail --max-time 10 "http://127.0.0.1:8001/health" >/dev/nul
   exit 1
 fi
 
-echo "Verificando se o subdominio possui DNS IPv4..."
-if ! getent ahostsv4 "$HOST" >/dev/null; then
-  echo "ATENCAO: DNS A de $HOST ainda nao foi encontrado."
-  echo "Configure o registro A pluv -> IP publico da VPS no painel DNS e tente novamente."
+echo "Verificando o DNS do PLUV..."
+EXPECTED_IPV4="187.127.63.29"
+RESOLVED_IPV4="$(getent ahostsv4 "$HOST" | awk '$2 == "STREAM" {print $1}' | sort -u || true)"
+if [[ "$RESOLVED_IPV4" != "$EXPECTED_IPV4" ]]; then
+  echo "O DNS de $HOST ainda nao aponta exclusivamente para a VPS."
+  echo "Esperado: $EXPECTED_IPV4"
+  echo "Encontrado: ${RESOLVED_IPV4:-nenhum}"
+  echo "Confira se os nameservers ativos ja sao os da Hostinger."
+  echo "O HTTPS nao sera iniciado antes de o DNS estar correto."
   exit 1
 fi
 
