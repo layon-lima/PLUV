@@ -1,0 +1,20 @@
+# Este arquivo executa APENAS a API. Banco PostgreSQL existente e intocado.
+services:
+  api:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    env_file:
+      - /opt/apps/pluviometros/config/api.env
+    ports:
+      - "127.0.0.1:8001:8000"
+    networks:
+      - pluv_internal
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 512m
+networks:
+  pluv_internal:
+    external: true
+    name: pluviometros_default
