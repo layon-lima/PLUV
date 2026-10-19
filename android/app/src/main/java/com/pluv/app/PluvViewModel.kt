@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.pluv.app.data.Gauge
 import com.pluv.app.data.PluvRepository
 import com.pluv.app.data.Reading
+import com.pluv.app.data.PendingOperation
 import com.pluv.app.sync.PluvApi
 import com.pluv.app.sync.SecureConfig
 import com.pluv.app.sync.SyncScheduler
@@ -86,6 +87,13 @@ class PluvViewModel(app: Application) : AndroidViewModel(app) {
     fun synchronize() {
         SyncScheduler.scheduleNow(getApplication())
         _message.value = "Sincronização agendada para quando houver internet."
+    }
+
+    fun resolveConflict(op: PendingOperation, keepLocal: Boolean) = launchSafely {
+        repo.resolveConflict(op.id, keepLocal)
+        _message.value = if (keepLocal)
+            "Sua alteração foi preparada para reenviar."
+        else "Versão do servidor aplicada ao celular."
     }
 
     private fun launchSafely(action: suspend () -> Unit) {
