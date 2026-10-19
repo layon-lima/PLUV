@@ -42,7 +42,8 @@ data class PendingOperation(
     val baseVersion: Long,
     val payload: String,
     val createdAt: Long,
-    val conflict: String = ""
+    val conflict: String = "",
+    val serverPayload: String = ""
 )
 
 @Entity(tableName = "sync_state")
@@ -56,7 +57,7 @@ interface PluvDao {
     @Query("SELECT * FROM readings WHERE deleted = 0 ORDER BY observedAt DESC")
     fun observeReadings(): Flow<List<Reading>>
 
-    @Query("SELECT * FROM outbox ORDER BY createdAt ASC, id ASC")
+    @Query("SELECT * FROM outbox ORDER BY rowid ASC")
     fun observePending(): Flow<List<PendingOperation>>
 
     @Query("SELECT * FROM gauges WHERE id = :id")
@@ -86,8 +87,11 @@ interface PluvDao {
     @Query("DELETE FROM outbox WHERE id = :opId")
     suspend fun deletePending(opId: String)
 
-    @Query("UPDATE outbox SET conflict = :error WHERE id = :opId")
-    suspend fun markConflict(opId: String, error: String)
+    @Query("UPDATE outbox SET conflict = :error, serverPayload = :serverPayload WHERE id = :opId")
+    suspend fun markConflict(opId: String, error: String, serverPayload: String)
+
+    @Query("DELETE FROM outbox WHERE entityId = :entityId")
+    suspend fun deletePendingForEntity(entityId: String)
 
     @Query("SELECT * FROM sync_state WHERE id = 1")
     suspend fun syncState(): SyncState?
