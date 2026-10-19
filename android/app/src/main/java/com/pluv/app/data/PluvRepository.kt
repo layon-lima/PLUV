@@ -75,6 +75,81 @@ class PluvRepository(private val context: Context, private val db: PluvDatabase)
         SyncScheduler.scheduleNow(context)
     }
 
+    /**
+     * Reconciliacao explicita: nunca descarta dados locais sem a escolha do usuario.
+     * keepLocal = true gera nova operacao com versao do servidor; false aceita o servidor.
+     */
+    suspend fun resolveConflict(opId: String, keepLocal: Boolean) {
+        db.withTransaction {
+            val op = db.dao().getPending(opId) ?: error("Pendencia nao encontrada")
+            check(op.conflict.isNotBlank()) { "Esta pendencia nao tem conflito" }
+            check(op.serverPayload.isNotBlank()) {
+                "O servidor nao informou o registro atual. Alteracao preservada."
+            }
+            val server = JSONObject(op.serverPayload)
+            val version = server.getLong("version")
+            val remotelyDeleted = !server.isNull("deleted_at")
+            if (op.kind == "gauge") {
+                val existing = db.dao().getGauge(op.entityId)
+                if (keepLocal) {
+                    check(existing != null) { "Pluviometro local nao encontrado" }
+                    check(!remotelyDeleted || existing.deleted) {
+                        "O pluviometro foi excluido no servidor; alteracao preservada."
+                    }
+                    db.dao().deletePendingForEntity(op.entityId)
+                    db.dao().putGauge(existing.copy(version = version))
+                    val payload = JSONObject().put("name", existing.name)
+                        .put("location", existing.location)
+                        .put("description", existing.description)
+                    db.dao().putPending(PendingOperation(
+                        UUID.randomUUID().toString(), op.entityId, "gauge",
+                        if (existing.deleted) "delete" else "upsert", version,
+                        if (existing.deleted) "{}" else payload.toString(),
+                        System.currentTimeMillis()
+                    ))
+                } else {
+                    db.dao().deletePendingForEntity(op.entityId)
+                    db.dao().putGauge(Gauge(
+                        id = op.entityId, name = server.getString("name"),
+                        location = server.optString("location"),
+                        description = server.optString("description"),
+                        version = version, deleted = remotelyDeleted
+                    ))
+                }
+            } else {
+                val existing = db.dao().getReading(op.entityId)
+                if (keepLocal) {
+                    check(existing != null) { "Medicao local nao encontrada" }
+                    check(!remotelyDeleted || existing.deleted) {
+                        "A medicao foi excluida no servidor; alteracao preservada."
+                    }
+                    db.dao().deletePendingForEntity(op.entityId)
+                    db.dao().putReading(existing.copy(version = version))
+                    val payload = JSONObject().put("gauge_id", existing.gaugeId)
+                        .put("amount_mm", existing.amountMm)
+                        .put("observed_at", existing.observedAt)
+                        .put("notes", existing.notes)
+                    db.dao().putPending(PendingOperation(
+                        UUID.randomUUID().toString(), op.entityId, "reading",
+                        if (existing.deleted) "delete" else "upsert", version,
+                        if (existing.deleted) "{}" else payload.toString(),
+                        System.currentTimeMillis()
+                    ))
+                } else {
+                    db.dao().deletePendingForEntity(op.entityId)
+                    db.dao().putReading(Reading(
+                        id = op.entityId, gaugeId = server.getString("gauge_id"),
+                        amountMm = server.getDouble("amount_mm"),
+                        observedAt = server.getString("observed_at"),
+                        notes = server.optString("notes"),
+                        version = version, deleted = remotelyDeleted
+                    ))
+                }
+            }
+        }
+        SyncScheduler.scheduleNow(context)
+    }
+
     suspend fun deleteReading(id: String) {
         db.withTransaction {
             val item = db.dao().getReading(id) ?: return@withTransaction
