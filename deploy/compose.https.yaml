@@ -1,0 +1,26 @@
+# Proxy HTTPS independente da API e do PostgreSQL existentes.
+name: pluv-https
+
+services:
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - pluv_caddy_data:/data
+      - pluv_caddy_config:/config
+    networks:
+      - pluv_internal
+
+networks:
+  pluv_internal:
+    external: true
+    name: pluviometros_default
+
+volumes:
+  pluv_caddy_data:
+  pluv_caddy_config:

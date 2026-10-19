@@ -1,0 +1,16 @@
+# HTTPS automatico para API PLUV. Banco PostgreSQL continua privado.
+pluv.fazendanovohorizonte.com {
+    encode zstd gzip
+
+    header {
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        Strict-Transport-Security "max-age=31536000"
+    }
+
+    # Documentacao interativa nao precisa ficar publica.
+    @docs path /docs /docs/* /redoc /openapi.json
+    respond @docs 404
+
+    reverse_proxy api:8000
+}
