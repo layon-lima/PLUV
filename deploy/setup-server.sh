@@ -48,9 +48,10 @@ fi
 docker exec "$DB" psql -X -v ON_ERROR_STOP=1 -U pluv_admin -d pluv_db -c "
 GRANT CONNECT ON DATABASE pluv_db TO pluv_api;
 GRANT USAGE ON SCHEMA public TO pluv_api;
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
-pluv_users, pluv_sessions, pluv_gauges, pluv_readings, pluv_changes, pluv_operations
-TO pluv_api;
+GRANT SELECT, INSERT ON TABLE pluv_users TO pluv_api;
+GRANT SELECT, INSERT, DELETE ON TABLE pluv_sessions TO pluv_api;
+GRANT SELECT, INSERT, UPDATE ON TABLE pluv_gauges, pluv_readings TO pluv_api;
+GRANT SELECT, INSERT ON TABLE pluv_changes, pluv_operations TO pluv_api;
 GRANT USAGE, SELECT ON SEQUENCE pluv_changes_id_seq TO pluv_api;
 " >/dev/null
 
@@ -61,8 +62,15 @@ unset DB_PASS
 
 echo "Preparando API (somente em 127.0.0.1:8001)..."
 docker compose -f "$COMPOSE" up -d --build
+echo "Aguardando a API responder localmente..."
+if ! curl --silent --show-error --fail --retry 12 --retry-delay 2 --retry-connrefused "http://127.0.0.1:8001/health"; then
+  echo ""
+  echo "ERRO: API nao respondeu. Ultimos logs:"
+  docker compose -f "$COMPOSE" logs --no-color --tail=50 api
+  exit 1
+fi
 echo ""
-echo "API iniciada; PostgreSQL existente foi preservado."
+echo "API PLUV iniciada e respondendo localmente; PostgreSQL existente preservado."
 echo "Para criar o primeiro administrador, execute:"
 echo "docker compose -f $COMPOSE run --rm api python scripts/bootstrap_admin.py"
 echo "NAO abra a porta 8001 ou 5432 para internet. Falta HTTPS."
