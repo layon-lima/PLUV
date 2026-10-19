@@ -1,62 +1,37 @@
-# INSTALAR A API PLUV NA VPS — PRIMEIRA VEZ
+# INSTALAÇÃO DO PLUV NA VPS — REPOSITÓRIO PÚBLICO
 
-O repositório é privado. A VPS precisa de uma chave SSH exclusiva e de leitura antes de baixar o código.
+Este procedimento exige que o repositório **layon-lima/PLUV** esteja público. O acesso público permite clonar o **código-fonte**, não o banco PostgreSQL, as senhas ou dados reais da VPS.
 
-## 1. Gerar a chave pública (somente na VPS)
-Execute no terminal da Hostinger:
+## 1. Tornar o repositório público
 
-```bash
-install -d -m 700 /root/.ssh
-test -f /root/.ssh/pluv_deploy_ed25519 || ssh-keygen -q -t ed25519 -f /root/.ssh/pluv_deploy_ed25519 -N '' -C pluv-hostinger-readonly
-cat /root/.ssh/pluv_deploy_ed25519.pub
-```
+GitHub → repositório PLUV → Settings → Danger Zone → Change repository visibility → Public.
 
-Copie **apenas a linha que começa com ssh-ed25519**. Nunca copie o arquivo sem `.pub`.
+**Cuidado:** o código e todo o histórico Git ficam públicos. Antes de publicar, confira se nunca houve credenciais privadas no histórico. O arquivo de senha do PostgreSQL está na VPS, em /opt/apps/pluviometros/config, e NÃO deve ser enviado ao GitHub.
 
-## 2. Autorizar a chave no GitHub
-Abra https://github.com/layon-lima/PLUV/settings/keys
-Clique em **Add deploy key**. Nome sugerido: VPS PLUV. Cole a chave pública e NÃO habilite Allow write access.
-
-## 3. Instalar API (somente depois de autorizar a chave)
-No terminal da VPS:
+## 2. Instalar e iniciar a API (uma só execução no terminal Ubuntu da VPS)
 
 ```bash
-apt-get update && apt-get install -y git openssh-client ca-certificates curl
-install -d -m 700 /root/.ssh
-printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' >> /root/.ssh/known_hosts
-chmod 600 /root/.ssh/known_hosts
-if [ ! -d /opt/apps/pluviometros/source/.git ]; then
-  GIT_SSH_COMMAND='ssh -i /root/.ssh/pluv_deploy_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes' git clone --depth 1 --branch main git@github.com:layon-lima/PLUV.git /opt/apps/pluviometros/source
-fi
-bash /opt/apps/pluviometros/source/deploy/atualizar-vps.sh
+apt-get update && apt-get install -y git curl ca-certificates openssl && bash -c 'set -e; mkdir -p /opt/apps/pluviometros; if [ ! -d /opt/apps/pluviometros/source/.git ]; then git clone --depth 1 --branch main https://github.com/layon-lima/PLUV.git /opt/apps/pluviometros/source; fi; bash /opt/apps/pluviometros/source/deploy/atualizar-vps.sh'
 ```
 
-Este comando:
-- Usa a chave pública autorizada no GitHub.
-- Baixa o código na pasta `source` ou atualiza a cópia existente.
-- Aplica o esquema sem apagar o banco pré-existente.
-- Cria login restrito ao PostgreSQL para a API.
-- Constrói o contêiner de FastAPI com Docker.
-- Aguarda até a API responder em `http://127.0.0.1:8001/health`.
+A instalação preserva o contêiner existente `pluviometros-db-1` e o volume persistente `pluviometros_pluv_data`; aplica tabelas ao banco `pluv_db`; cria usuário `pluv_api` restrito e senha local, instala a API com Docker, e aguarda a rota `http://127.0.0.1:8001/health` responder. Se falhar, o script interrompe com erro e exibe os últimos logs. Não significa que tenha sido validado até ser executado na VPS.
 
-## 4. Criar o administrador no servidor (após instalação)
+Não abra as portas 5432 (PostgreSQL) nem 8001 (API interna) no firewall.
+
+## 3. Criar o primeiro administrador (senha digitada somente na VPS)
+
 ```bash
 docker compose -f /opt/apps/pluviometros/source/deploy/compose.api.yaml run --rm api python scripts/bootstrap_admin.py
 ```
 
-Digite nome e senha quando o programa solicitar. A senha não será exibida ao digitar e não deve ser enviada por chat.
+O terminal pedirá usuário e senha. **Não compartilhe senhas aqui no chat.**
 
-## Estado esperado
-A API escuta somente em `127.0.0.1:8001`, sem publicação na internet. Isso é intencional: antes de conectar celulares, falta configurar domínio, proxy HTTPS, limites contra tentativas de login, backups e testes finais. NÃO abrir a porta 5432 ou 8001 no firewall.
+## 4. Atualizar depois
 
-A chave de servidor `/root/.ssh/pluv_deploy_ed25519` deve permanecer **privada** na VPS. Nunca enviá-la para GitHub ou ChatGPT.
-
-A chave oficial de host SSH do GitHub na etapa 3 corresponde à publicada em https://docs.github.com/pt/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
-
-## Atualizações futuras
-Após a instalação, use:
 ```bash
 bash /opt/apps/pluviometros/source/deploy/atualizar-vps.sh
 ```
 
-A configuração é manual, sem dependência de GitHub Actions.
+## Próxima etapa
+
+A API ficará disponível apenas para a própria VPS (127.0.0.1:8001) até configurarmos domínio HTTPS, proxy reverso e proteção contra tentativas repetidas de login. Também precisamos configurar backup externo e testar a restauração. O aplicativo Android necessita de HTTPS para sincronização.
