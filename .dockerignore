@@ -1,0 +1,11 @@
+.git
+.gitignore
+.idea
+.gradle
+android/
+preview/
+*.zip
+*.apk
+web/node_modules/
+**/__pycache__/
+**/*.pyc

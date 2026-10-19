@@ -1,8 +1,9 @@
-# Este arquivo executa APENAS a API. Banco PostgreSQL existente e intocado.
+# PLUV PWA + API juntos no mesmo conteiner. Banco externo preservado.
 services:
   api:
     build:
-      context: ../backend
+      context: ..
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     env_file:
       - /opt/apps/pluviometros/config/api.env

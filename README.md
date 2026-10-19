@@ -1,38 +1,30 @@
-# PLUV — Pluviômetros Offline
+# PLUV — Pluviômetros (PWA principal)
 
-Sistema de registro de chuva com aplicativo Android offline e sincronização com backend próprio na VPS.
+O **PWA em `web/`** é a interface oficial para navegador e instalação no celular. Os arquivos em `android/` continuam como legado, mas o desenvolvimento principal é **na branch `main`**.
 
-## O que está no repositório
+## Funcionalidades
 
-- `preview/index.html`: prévia visual navegável para abrir no navegador, sem instalar APK. Os dados ficam no armazenamento local do navegador.
-- `android/`: código-fonte inicial do aplicativo nativo em Kotlin / Jetpack Compose, com SQLite (Room), fila de alterações persistente e WorkManager.
-- `backend/`: API FastAPI, autenticação, controle de versões e esquema PostgreSQL do banco central.
-- `deploy/`: configuração Docker da API e instalador do backend para a VPS.
+- Cadastro/edição/exclusão de pluviômetros com nome, localização e descrição.
+- Registro de chuva em mm, data e hora automáticas, histórico, edição e exclusão.
+- Banco offline **IndexedDB**, fila de envio persistente e sincronização quando houver internet.
+- Conflitos entre aparelhos exigem escolha explícita; falhas de rede ficam somente no indicador discreto do cabeçalho.
+- Backup JSON pelo menu `⋯`. PWA instalável quando aberto com HTTPS.
+- Sem tela de login nem credenciais, conforme solicitado.
 
-## Situação atual
+## Abrir localmente no Windows
 
-- PostgreSQL da VPS foi instalado e considerado saudável no último teste informado pelo administrador.
-- API e aplicação Android estão no GitHub, mas **a API ainda não foi instalada na VPS**.
-- O **APK ainda não foi compilado/validado** e não deve ser tratado como pronto.
-- HTTPS público, administrador, backups, testes de conflito e testes reais de sincronização ainda estão pendentes.
-- A prévia web **não sincroniza com o servidor**: ela é apenas para testar o visual e o fluxo.
+Na pasta raiz do clone do GitHub, execute `ABRIR_PLUV.ps1`. O endereço é `http://127.0.0.1:8765`. Precisa do Python instalado e Chrome/Edge atualizado.
 
-## Regras do projeto
+## Publicação na VPS
 
-- Um banco central PLUV e uma API PLUV para todos os usuários autorizados; jamais um banco por usuário.
-- Cada Android grava localmente, independentemente da internet.
-- Quando houver rede, tenta enviar alterações confirmadas de modo idempotente, com WorkManager.
-- Conflitos não são sobrescritos silenciosamente; precisam de uma resolução.
-- Outros aplicativos na VPS ficam isolados; não publicar PostgreSQL (5432) na internet.
-- Nenhuma senha/credencial vai para GitHub.
-- O servidor hospeda API + banco de dados; a interface executa nos dispositivos.
+O PWA será servido **junto à API** no domínio `https://pluv.fazendanovohorizonte.com/` depois de atualizar explicitamente a VPS. A atualização existente utiliza `deploy/atualizar-vps.sh` e `deploy/setup-server.sh`. **Fazer commit na main não publica automaticamente na VPS.**
 
-## Implantação
+O banco PostgreSQL permanece **privado** e o dos outros aplicativos permanece separado. Não publique as portas 5432 nem 8001. Não execute `docker compose down -v`.
 
-Leia `deploy/README.md`. Não altere o contêiner PostgreSQL existente nem execute comandos de remoção do volume de dados.
+**ATENÇÃO:** a API de leitura/escrita do PLUV não exige autenticação. Pessoas que descobrirem a URL da API poderão ler, adicionar, alterar ou excluir dados sem instalar o app. Essa é uma limitação da escolha de acesso irrestrito; backups e controles de rede são recomendados.
 
-## Compilação Android
+## Dados locais
 
-O projeto contém scripts Gradle e código-fonte Kotlin, porém **a compilação ainda precisa ser executada** em ambiente com Android SDK, Gradle e JDK compatíveis. O repositório não contém o arquivo binário `gradle-wrapper.jar`: será necessário gerar o wrapper com Gradle ou utilizar uma configuração Gradle compatível no Android Studio.
+`http://127.0.0.1:8765` e `https://pluv.fazendanovohorizonte.com` usam bancos IndexedDB diferentes porque são origens distintas. Exporte o backup JSON no endereço local e importe no HTTPS se quiser transportar dados de testes.
 
-Não declarar o APK pronto antes de uma compilação real, instalação e testes de operação offline e sincronização.
+Consulte `PWA-NOVO.md` para detalhes técnicos.
