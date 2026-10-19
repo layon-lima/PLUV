@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.withTransaction
 import com.pluv.app.sync.SyncScheduler
 import java.time.OffsetDateTime
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.util.UUID
 import org.json.JSONObject
 
@@ -13,7 +15,9 @@ class PluvRepository(private val context: Context, private val db: PluvDatabase)
     val pending = db.dao().observePending()
 
     suspend fun saveGauge(id: String?, name: String, location: String, description: String) {
-        require(name.isNotBlank())
+        require(name.isNotBlank() && name.trim().length <= 160) { "Nome deve ter ate 160 caracteres" }
+        require(location.length <= 240) { "Localizacao deve ter ate 240 caracteres" }
+        require(description.length <= 2000) { "Descricao deve ter ate 2000 caracteres" }
         val entityId = id ?: UUID.randomUUID().toString()
         db.withTransaction {
             val original = db.dao().getGauge(entityId)
@@ -56,13 +60,15 @@ class PluvRepository(private val context: Context, private val db: PluvDatabase)
     }
 
     suspend fun saveReading(id: String?, gaugeId: String, mm: Double, whenAt: String, notes: String) {
-        require(mm.isFinite() && mm >= 0 && mm <= 10000)
+        require(mm.isFinite() && mm >= 0 && mm <= 10000) { "Chuva deve ficar entre 0 e 10.000 mm" }
+        require(notes.length <= 2000) { "Observacoes devem ter ate 2000 caracteres" }
+        val roundedMm = BigDecimal.valueOf(mm).setScale(2, RoundingMode.HALF_UP).toDouble()
         OffsetDateTime.parse(whenAt)
         val entityId = id ?: UUID.randomUUID().toString()
         db.withTransaction {
             val original = db.dao().getReading(entityId)
             val base = (original?.version ?: 0) + db.dao().pendingCount(entityId)
-            val item = Reading(entityId, gaugeId, mm, whenAt, notes.trim(), original?.version ?: 0, false)
+            val item = Reading(entityId, gaugeId, roundedMm, whenAt, notes.trim(), original?.version ?: 0, false)
             db.dao().putReading(item)
             val data = JSONObject()
                 .put("gauge_id", item.gaugeId)
