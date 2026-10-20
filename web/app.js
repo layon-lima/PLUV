@@ -198,7 +198,21 @@ $('closeOptions').onclick=()=>$('optionsDialog').close();
 $('closeConflict').onclick=()=>$('conflictDialog').close();
 $('keepLocalBtn').onclick=()=>chooseConflict(true);
 $('keepServerBtn').onclick=()=>chooseConflict(false);
-$('exportBtn').onclick=async()=>{try{const b=await backup(),blob=new Blob([JSON.stringify(b,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`PLUV-BACKUP-${new Date().toISOString().slice(0,10)}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);toast('Backup exportado')}catch(e){toast(e.message)}};
+$('exportBtn').onclick=async()=>{try{
+ const data=JSON.stringify(await backup(),null,2);
+ if(window.PLUV_ANDROID?.saveBackup){
+  window.PLUV_ANDROID.saveBackup(data);
+  toast('Escolha onde salvar o backup');
+ }else{
+  const blob=new Blob([data],{type:'application/json'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;
+  a.download=`PLUV-BACKUP-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+  toast('Backup exportado');
+ }
+}catch(e){toast(e.message)}};
 $('importBtn').onclick=()=>$('importFile').click();
 $('importFile').onchange=async event=>{try{const file=event.target.files?.[0];if(!file)return;const data=JSON.parse(await file.text());if(!confirm('Importar registros ausentes deste backup? Os dados atuais serão preservados.'))return;const count=await importBackup(data);await refresh();scheduleSync();toast(`${count} registros importados`)}catch(e){toast(e.message)}finally{event.target.value=''}};
 window.addEventListener('online',()=>{lastError='';status();sync()});
