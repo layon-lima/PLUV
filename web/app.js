@@ -18,11 +18,39 @@ function status(){
 }
 function render(){
  const app=$('app');const g=state.gauges.find(x=>x.id===selected);
- if(!g){selected=null;app.innerHTML=`<h2 class="title">Visão geral</h2><p class="subtitle">Acompanhe as medições de chuva</p><section class="hero"><span class="hero-caption">Chuva acumulada de todos os pluviômetros</span><strong>${fmt(total())} <small>mm</small></strong><span class="hero-caption">${state.readings.length} medições registradas</span></section><div class="kpis"><div class="tile"><span>Pluviômetros</span><strong>${state.gauges.length}</strong></div><div class="tile"><span>Medições</span><strong>${state.readings.length}</strong></div></div><div class="section"><h2>Pluviômetros</h2><button class="button" data-action="newGauge">+ Novo</button></div>${state.gauges.length?`<div class="gauges">${[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(g=>`<button class="gauge" data-gauge="${esc(g.id)}"><div><span class="gauge-icon">💧</span><h3>${esc(g.name)}</h3><div class="place">${esc(g.location||'Local não informado')}</div></div><div class="rain">${fmt(total(g.id))} <small>mm</small></div></button>`).join('')}</div>`:'<div class="empty">Nenhum pluviômetro cadastrado.<br>Toque em <strong>+ Novo</strong> para começar.</div>'}`;
+ if(!g){
+  selected=null;
+  const cards=[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(g=>{
+   const latest=state.readings.filter(r=>r.gaugeId===g.id).sort((a,b)=>b.at.localeCompare(a.at))[0];
+   const variants=['campo','serra','lago','pasto'];
+   let hash=0;for(const ch of g.id)hash=(hash*31+ch.charCodeAt(0))>>>0;
+   const illustration=variants[hash%variants.length];
+   return `<button class="gauge gauge-list-card" type="button" data-gauge="${esc(g.id)}" aria-label="Abrir pluviômetro ${esc(g.name)}">
+    <span class="gauge-illustration"><img src="/icons/pluviometro-${illustration}.svg" alt="" loading="lazy" width="88" height="88"></span>
+    <span class="gauge-copy">
+      <strong class="gauge-name">${esc(g.name)}</strong>
+      <span class="place">⌖ ${esc(g.location||'Local não informado')}</span>
+      <span class="rain">${fmt(total(g.id))} <small>mm</small></span>
+      <span class="updated">◷ ${latest?'Última medição: '+esc(when(latest.at)):'Sem medições registradas'}</span>
+    </span>
+    <span class="gauge-chevron" aria-hidden="true">›</span>
+   </button>`;
+  }).join('');
+  app.innerHTML=`<section class="hero hero-home">
+    <div class="hero-info"><span class="hero-caption">Chuva acumulada</span><strong>${fmt(total())} <small>mm</small></strong></div>
+    <svg class="rain-cloud" viewBox="0 0 120 95" fill="none" aria-hidden="true">
+      <path d="M27 63a23 23 0 0 1 5-45 33 33 0 0 1 61 8 20 20 0 0 1 0 39H27Z" fill="#3F7B96" opacity=".64"/>
+      <path d="m43 70-7 16m28-18-8 18m28-16-7 16" stroke="#75C7DE" stroke-width="5" stroke-linecap="round"/>
+    </svg>
+   </section>
+   <div class="section gauge-heading"><h2>Pluviômetros</h2></div>
+   ${cards?`<div class="gauges gauge-list">${cards}</div>`:'<div class="empty empty-home">Nenhum pluviômetro cadastrado.<br>Toque em <strong>+</strong> para começar.</div>'}`;
+
  }else{
   const rs=state.readings.filter(r=>r.gaugeId===selected).sort((a,b)=>b.at.localeCompare(a.at));
   app.innerHTML=`<button class="back" data-action="back">← Voltar</button><div class="detailhead"><div><h2 class="title">${esc(g.name)}</h2><p class="subtitle">${esc(g.location||'Local não informado')}</p></div><button class="button button-soft" data-action="editGauge">Editar</button></div><section class="hero"><span class="hero-caption">Chuva acumulada neste pluviômetro</span><strong>${fmt(total(g.id))} <small>mm</small></strong><span class="hero-caption">${rs.length} medições</span></section><div class="tile description"><strong>Descrição</strong><span class="muted">${esc(g.description||'Não informada')}</span></div><div class="section"><h2>Histórico de chuvas</h2><button class="button" data-action="newReading">+ Registrar</button></div>${rs.length?rs.map(r=>`<article class="reading"><div><strong>${fmt(r.mm)} mm</strong><time datetime="${esc(r.at)}">${esc(when(r.at))}</time>${r.notes?`<div class="notes">${esc(r.notes)}</div>`:''}</div><div class="actions"><button class="button button-soft" data-edit="${esc(r.id)}">Editar</button><button class="button button-danger" data-delete="${esc(r.id)}">Excluir</button></div></article>`).join(''):'<div class="empty">Nenhuma chuva registrada.<br>Toque em <strong>+ Registrar</strong>.</div>'}<div class="section"><button class="button button-danger" data-action="deleteGauge">Excluir pluviômetro</button></div>`;
  }
+ $('fabNewGauge').hidden=Boolean(g);
  status();
 }
 async function refresh(){state=await snapshot();render()}
@@ -91,6 +119,7 @@ $('app').addEventListener('click',async event=>{
 });
 $('banner').addEventListener('click',event=>{if(event.target.id==='openConflict')openConflict()});
 $('closeDialog').onclick=$('cancelDialog').onclick=()=>$('dialog').close();
+$('fabNewGauge').onclick=()=>editGauge();
 $('syncBtn').onclick=sync;
 $('optionsBtn').onclick=()=>$('optionsDialog').showModal();
 $('closeOptions').onclick=()=>$('optionsDialog').close();
