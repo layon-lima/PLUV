@@ -5,6 +5,60 @@ const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFr
 const when=v=>{try{return new Date(v).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}catch{return v}};
 const total=id=>state.readings.filter(r=>!id||r.gaugeId===id).reduce((sum,r)=>sum+r.mm,0);
 const count=id=>state.readings.filter(r=>r.gaugeId===id).length;
+
+// Navegacao real do navegador/PWA: o botao Voltar do Android volta ao dashboard.
+const detailPrefix='#pluv/';
+function gaugeFromUrl(){
+ const hash=location.hash;
+ if(!hash.startsWith(detailPrefix))return null;
+ try{
+  const id=decodeURIComponent(hash.slice(detailPrefix.length));
+  return /^[0-9a-f-]{36}$/i.test(id)?id:null;
+ }catch{return null}
+}
+function setupNavigation(){
+ const id=gaugeFromUrl();
+ if(id&&!history.state?.pluvPage){
+  const url=location.pathname+location.search;
+  history.replaceState({pluvPage:'home'},'',url);
+  history.pushState({pluvPage:'detail',id},'',detailPrefix+encodeURIComponent(id));
+ }else if(!history.state?.pluvPage){
+  history.replaceState({pluvPage:'home'},'',location.href);
+ }
+ selected=gaugeFromUrl();
+}
+function showGauge(id){
+ if(selected===id)return;
+ history.pushState({pluvPage:'detail',id},'',detailPrefix+encodeURIComponent(id));
+ selected=id;
+ render();
+ window.scrollTo(0,0);
+}
+function showHome(){
+ if(gaugeFromUrl()){
+  if(history.state?.pluvPage==='detail')history.back();
+  else{
+   history.replaceState({pluvPage:'home'},'',location.pathname+location.search);
+   selected=null;render();
+  }
+ }else{selected=null;render()}
+ window.scrollTo(0,0);
+}
+window.addEventListener('popstate',()=>{
+ selected=gaugeFromUrl();
+ render();
+ window.scrollTo(0,0);
+});
+// Chamado pelo invólucro Android ao usar a seta/gesto Voltar.
+// Nenhum dado é apagado e os formulários abertos têm prioridade.
+window.PLUV_NATIVE_BACK=()=>{
+ const opened=['dialog','optionsDialog','conflictDialog']
+  .map(id=>$(id)).find(element=>element?.open);
+ if(opened){opened.close();return true}
+ if(selected||gaugeFromUrl()){showHome();return true}
+ return false;
+};
+
 function toast(text){const t=$('toast');t.textContent=text;t.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.add('hidden'),3600)}
 function setBanner(html,isConflict=false){$('banner').innerHTML=html;$('banner').classList.remove('hidden');$('banner').classList.toggle('conflict',isConflict)}
 function status(){
@@ -123,15 +177,15 @@ async function chooseConflict(keepLocal){try{await resolveConflict(conflictSeq,k
 $('app').addEventListener('click',async event=>{
  const b=event.target.closest('button');if(!b)return;
  try{
- if(b.dataset.gauge){selected=b.dataset.gauge;render();return}
+ if(b.dataset.gauge){showGauge(b.dataset.gauge);return}
  if(b.dataset.edit){editReading(b.dataset.edit);return}
  if(b.dataset.delete){if(confirm('Excluir esta medição? Ela ficará excluída também nos outros dispositivos quando sincronizar.')){await deleteReading(b.dataset.delete);await refresh();scheduleSync()}return}
  switch(b.dataset.action){
-  case 'back':selected=null;render();break;
+  case 'back':showHome();break;
   case 'newGauge':editGauge();break;
   case 'editGauge':editGauge(selected);break;
   case 'newReading':editReading();break;
-  case 'deleteGauge':if(confirm('Excluir este pluviômetro e suas medições em todos os aparelhos após sincronizar?')){await deleteGauge(selected);selected=null;await refresh();scheduleSync()}break;
+  case 'deleteGauge':if(confirm('Excluir este pluviômetro e suas medições em todos os aparelhos após sincronizar?')){await deleteGauge(selected);showHome();await refresh();scheduleSync()}break;
  }
  }catch(e){toast(e.message)}
 });
@@ -153,7 +207,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('installBtn').hidden=false});
 $('installBtn').onclick=async()=>{if(installPrompt){installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$('installBtn').hidden=true}};
 async function init(){
- try{await refresh();if('serviceWorker'in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1')){
+ try{setupNavigation();await refresh();if('serviceWorker'in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1')){
   try{await navigator.serviceWorker.register('/sw.js')}catch(e){console.warn('Cache offline indisponível:',e)}
  }sync();setInterval(()=>{if(!document.hidden)sync()},60000)}
  catch(e){$('app').innerHTML=`<div class="empty">Não foi possível abrir o banco local do navegador: ${esc(e.message)}. Verifique se o navegador permite armazenamento local e não está no modo anônimo.</div>`;lastError=e.message;status()}
