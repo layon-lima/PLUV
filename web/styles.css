@@ -51,3 +51,129 @@
  .fab-add{width:76px;height:76px}
 }
 @media(prefers-reduced-motion:reduce){.gauge-list-card,.fab-add{transition:none}}
+
+
+
+/* Pagina do pluviometro — resumo unico, sem cards duplicados */
+.hero-detail{
+  margin:8px 0 12px;
+  padding:14px 18px 17px;
+  border-radius:18px;
+  background:#153c53;
+  color:#fff;
+}
+.detail-hero-toolbar{
+  display:grid;
+  grid-template-columns:33px 1fr 33px;
+  align-items:center;
+  gap:9px;
+  margin-bottom:9px;
+}
+.detail-hero-overline{
+  font-size:10px;
+  font-weight:750;
+  letter-spacing:1.15px;
+  color:#b8d7e2;
+  text-align:center;
+}
+.detail-hero-icon{
+  display:grid;
+  place-items:center;
+  width:33px;
+  height:33px;
+  border:1px solid #ffffff28;
+  background:#ffffff12;
+  color:#e7f6f9;
+  border-radius:9px;
+  font-size:20px;
+  line-height:1;
+  padding:0;
+}
+.detail-hero-icon:hover{background:#ffffff24}
+.detail-hero-icon:focus-visible{outline:3px solid #79d7e7;outline-offset:2px}
+.detail-hero-name{
+  font-size:24px;
+  font-weight:800;
+  letter-spacing:-.5px;
+  line-height:1.15;
+  margin:5px 0 3px;
+  overflow-wrap:anywhere;
+}
+.detail-hero-location{
+  color:#b5d5df;
+  font-size:12px;
+  margin:5px 0 0;
+  overflow-wrap:anywhere;
+}
+.detail-hero-divider{
+  border-top:1px solid #ffffff24;
+  margin:13px 0 12px;
+}
+.detail-hero-label{color:#b5d7e2;font-size:12px}
+.hero-detail strong.detail-hero-rain{
+  display:block;
+  font-size:37px;
+  line-height:1.12;
+  margin:4px 0 5px;
+  letter-spacing:-1px;
+}
+.hero-detail .detail-hero-rain small{
+  font-size:17px;
+  font-weight:550;
+  letter-spacing:0;
+}
+.detail-hero-count{font-size:11px;color:#bdd7e0}
+.button-register-rain{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  position:relative;
+  background:#0a8198;
+  border-color:#0a8198;
+  color:#fff;
+  border-radius:13px;
+  min-height:54px;
+  padding:10px 42px;
+  width:100%;
+  font-size:17px;
+  font-weight:750;
+  box-shadow:0 4px 13px #0b657225;
+}
+.button-register-rain:hover{background:#076e84;border-color:#076e84}
+.button-register-rain:focus-visible{outline:3px solid #6bcee0;outline-offset:2px}
+.register-plus{font-size:28px;line-height:1;font-weight:400}
+.register-chevron{
+  position:absolute;
+  right:17px;
+  top:50%;
+  transform:translateY(-50%);
+  font-size:26px;
+  font-weight:350;
+}
+.detail-history-title{margin:20px 0 12px}
+.detail-history-title h2{font-size:17px}
+.detail-empty{padding:28px 18px;line-height:1.7}
+.detail-bottom-actions{
+  display:flex;
+  justify-content:center;
+  margin-top:28px;
+  padding-bottom:10px;
+}
+.detail-delete{
+  font-size:12px;
+  color:#985261;
+  background:transparent;
+  border:0;
+  border-bottom:1px solid transparent;
+  padding:7px 11px;
+}
+.detail-delete:hover{text-decoration:underline}
+.detail-delete:focus-visible{outline:3px solid #60b5c9;outline-offset:2px}
+@media(max-width:650px){
+  .hero-detail{padding:12px 15px 16px;margin:5px 0 12px}
+  .detail-hero-name{font-size:22px}
+  .hero-detail strong.detail-hero-rain{font-size:35px}
+  .button-register-rain{min-height:56px;font-size:16px}
+  .detail-history-title{margin:18px 0 11px}
+}
