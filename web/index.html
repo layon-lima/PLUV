@@ -19,6 +19,7 @@
     </header>
     <section id="banner" class="banner hidden" role="alert"></section>
     <main id="app" aria-live="polite"><div class="loading">Carregando registros salvos...</div></main>
+    <button id="fabNewGauge" class="fab-add" type="button" aria-label="Adicionar pluviômetro" title="Novo pluviômetro" hidden>+</button>
     <footer class="footer"><span>Salvamento local automático • Atualiza ao conectar</span><span id="pendingInfo">Verificando fila...</span></footer>
   </div>
   <dialog id="dialog"><form id="editorForm" method="dialog" novalidate><div class="modal-head"><h2 id="modalTitle">Novo registro</h2><button class="close" type="button" id="closeDialog" aria-label="Fechar">✕</button></div><div id="fields"></div><div id="formError" class="form-error hidden" role="alert"></div><div class="modal-actions"><button type="button" class="button button-soft" id="cancelDialog">Cancelar</button><button type="submit" class="button" id="saveDialog">Salvar</button></div></form></dialog>
