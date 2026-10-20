@@ -1,5 +1,5 @@
-const VERSION='pluv-pwa-v5';
-const FILES=['/','/index.html','/styles.css','/app.js','/db.js','/manifest.webmanifest','/icons/icon-192.png','/icons/icon-512.png','/icons/pluviometro-campo.svg','/icons/pluviometro-serra.svg','/icons/pluviometro-lago.svg','/icons/pluviometro-pasto.svg'];
+const VERSION='pluv-pwa-v6';
+const FILES=['/','/index.html','/styles.css','/app.js','/db.js','/manifest.webmanifest','/icons/icon-192.png','/icons/icon-512.png','/icons/pluv.svg','/icons/pluviometro-campo.svg','/icons/pluviometro-serra.svg','/icons/pluviometro-lago.svg','/icons/pluviometro-pasto.svg'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(VERSION).then(cache=>cache.addAll(FILES)));self.skipWaiting()});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==VERSION).map(k=>caches.delete(k)))));self.clients.claim()});
 self.addEventListener('fetch',event=>{
