@@ -1,10 +1,13 @@
 package com.pluv.app
 
 import android.app.Application
+import com.pluv.app.data.PluvDatabase
 
 /**
- * PLUV nativo usa o mesmo PWA da VPS via WebView.
- * Removida a sincronizacao antiga por Worker para evitar erros de login e
- * manter uma unica fila offline (IndexedDB) por dispositivo.
+ * O app principal e o PWA carregado no WebView.
+ * Mantemos a base Room antiga apenas para compatibilidade do codigo legado
+ * e eventual migracao, sem inicializar nem agendar sincronizacao antiga.
  */
-class PluvApplication : Application()
+class PluvApplication : Application() {
+    val database by lazy { PluvDatabase.build(this) }
+}
