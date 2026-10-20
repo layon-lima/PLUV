@@ -1,34 +1,28 @@
-# PLUV Android nativo — estado do desenvolvimento
+# PLUV Android — mesma interface e API do PWA
 
-Código Android em Kotlin + Jetpack Compose + Room/SQLite + WorkManager. O aplicativo ainda precisa de compilação real e validação em aparelhos. Os componentes principais estão em `app/src/main/java/com/pluv/app`:
+A partir da versão Android 1.0.0 (`versionCode 2`), o aplicativo é um **WebView** que carrega `https://pluv.fazendanovohorizonte.com/`. A interface vem de `web/` e o banco central é o PostgreSQL `pluv_db` na VPS.
 
-- `MainActivity.kt`: telas de lista, detalhes, cadastro de pluviômetros, registro de chuvas e conexão.
-- `PluvDatabase.kt`: banco local SQLite/Room, pluviômetros, medições, fila persistente e cursor de sincronização.
-- `PluvRepository.kt`: gravação local transacional de dados e das operações pendentes.
-- `PluvSyncWorker.kt`: envia alterações por HTTPS, recebe atualizações e agenda novas tentativas.
-- `SecureConfig.kt`: guarda o token cifrado com o Android Keystore, em vez de embutir senhas.
+## Funcionamento
 
-**Estado:** código-fonte enviado à main, ainda sem APK compilado ou teste de integração com a VPS. A lógica de conflitos guarda divergências, mas a interface de resolução ainda não está concluída. Portanto ainda não é uma versão de produção.
+- PWA no navegador e APK Android usam o **mesmo código de interface**, sem usuário ou senha, e sincronizam com a mesma API na VPS.
+- Os registros são salvos offline no IndexedDB de **cada instalação**; a sincronização online compartilha as informações. O WebView deve ser aberto ao menos uma vez com internet para carregar seus arquivos e habilitar o cache do Service Worker.
+- O botão ou gesto **Voltar** retorna do pluviômetro à lista e fecha formulários e janelas abertas antes de sair.
+- Backup JSON: importar via seletor de arquivos do Android e exportar via janela nativa para escolher onde salvar.
+- O ícone foi derivado da **arte SVG oficial enviada pelo proprietário** e é o mesmo do PWA.
+- O projeto antigo com Room/WorkManager não é mais a interface ativa. A sincronização Kotlin anterior está desativada.
 
-## Requisitos de validação final
+**Atenção aos dados antigos:** o IndexedDB do novo WebView é separado do armazenamento Room/SQLite do APK Kotlin antigo e também do IndexedDB do PWA no Chrome. Uma atualização de APK não migra os registros antigos automaticamente. Antes de substituir o APK anterior, confirme que os registros dele estão presentes na VPS ou guarde uma cópia.
 
-- Compilar com Android SDK/Gradle compatíveis (projeto usa Gradle 8.13 / AGP 8.11.1), gerar wrapper completo.
-- Instalar APK e testar salvamento/edição/exclusão sem internet.
-- Testar milhares de registros, reinício do app e do celular, e envio após retorno da internet.
-- Verificar idempotência, alterações em vários aparelhos, conflitos, autenticação, expiração de sessão e backups.
-- Conferir integridade após interrupção e repetição de envios.
-- Garantir que só usuários autorizados sincronizam e que o PostgreSQL não é exposto.
+## Gerar APK pelo Android Studio
 
-O aplicativo offline não depende de servidor para gravar medições. A sincronização, login inicial e consultas compartilhadas dependem de conexão e de API HTTPS ativa.
+1. Na pasta raiz `PLUV`, execute `git pull --ff-only origin main`.
+2. Abra a subpasta `PLUV/android` no Android Studio.
+3. Aguarde **Sync Project with Gradle Files** (JDK 21, SDK 35).
+4. Use **Build → Generate App Bundles or APKs → Generate APKs**.
+5. Arquivo previsto: `android/app/build/outputs/apk/debug/app-debug.apk`.
 
-## Gerar o APK no Windows
+O commit do código no GitHub **não compila automaticamente um APK**. É necessário executar a compilação e testar no Android Studio.
 
-Foi adicionado `GERAR_APK.ps1`: execute na pasta `android` em um PC com Android Studio + SDK 35 para baixar Gradle 8.13 e gerar `app/build/outputs/apk/debug/app-debug.apk` sem GitHub Actions. Veja `COMPILAR_APK.md`.
+## Atualização do servidor web
 
-O aplicativo utiliza `https://pluv.fazendanovohorizonte.com` como URL padrão para autenticação e sincronização.
-
-## Segurança de sincronização
-
-- A fila offline é persistente e enviada na ordem de inserção.
-- O cursor remoto não avança sobre alterações conflitantes ainda não aplicadas.
-- Conflitos são mantidos até o usuário escolher **Manter alteração do celular** ou **Usar versão do servidor**; se o servidor não retornou dados suficientes, o lançamento permanece protegido e pendente de suporte.
+Na VPS, execute `bash /opt/apps/pluviometros/source/deploy/atualizar-vps.sh` depois que o código estiver publicado na branch `main`. Esse script preserva o banco PostgreSQL atual.
