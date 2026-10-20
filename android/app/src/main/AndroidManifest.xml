@@ -6,6 +6,8 @@
         android:name=".PluvApplication"
         android:allowBackup="false"
         android:label="PLUV"
+        android:icon="@drawable/pluv_launcher"
+        android:roundIcon="@drawable/pluv_launcher"
         android:supportsRtl="true"
         android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
