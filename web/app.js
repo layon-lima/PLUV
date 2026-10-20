@@ -48,7 +48,25 @@ function render(){
 
  }else{
   const rs=state.readings.filter(r=>r.gaugeId===selected).sort((a,b)=>b.at.localeCompare(a.at));
-  app.innerHTML=`<button class="back" data-action="back">← Voltar</button><div class="detailhead"><div><h2 class="title">${esc(g.name)}</h2><p class="subtitle">${esc(g.location||'Local não informado')}</p></div><button class="button button-soft" data-action="editGauge">Editar</button></div><section class="hero"><span class="hero-caption">Chuva acumulada neste pluviômetro</span><strong>${fmt(total(g.id))} <small>mm</small></strong><span class="hero-caption">${rs.length} medições</span></section><div class="tile description"><strong>Descrição</strong><span class="muted">${esc(g.description||'Não informada')}</span></div><div class="section"><h2>Histórico de chuvas</h2><button class="button" data-action="newReading">+ Registrar</button></div>${rs.length?rs.map(r=>`<article class="reading"><div><strong>${fmt(r.mm)} mm</strong><time datetime="${esc(r.at)}">${esc(when(r.at))}</time>${r.notes?`<div class="notes">${esc(r.notes)}</div>`:''}</div><div class="actions"><button class="button button-soft" data-edit="${esc(r.id)}">Editar</button><button class="button button-danger" data-delete="${esc(r.id)}">Excluir</button></div></article>`).join(''):'<div class="empty">Nenhuma chuva registrada.<br>Toque em <strong>+ Registrar</strong>.</div>'}<div class="section"><button class="button button-danger" data-action="deleteGauge">Excluir pluviômetro</button></div>`;
+  const countLabel=rs.length===1?'1 medição registrada':rs.length+' medições registradas';
+  app.innerHTML=`<section class="hero hero-detail" aria-label="Resumo do pluviômetro">
+   <div class="detail-hero-toolbar">
+     <button class="detail-hero-icon" type="button" data-action="back" aria-label="Voltar aos pluviômetros" title="Voltar">←</button>
+     <span class="detail-hero-overline">PLUVIÔMETRO</span>
+     <button class="detail-hero-icon" type="button" data-action="editGauge" aria-label="Editar pluviômetro" title="Editar pluviômetro">✎</button>
+   </div>
+   <h2 class="detail-hero-name">${esc(g.name)}</h2>
+   ${g.location?`<div class="detail-hero-location">⌖ ${esc(g.location)}</div>`:''}
+   <div class="detail-hero-divider"></div>
+   <div class="detail-hero-label">Chuva acumulada</div>
+   <strong class="detail-hero-rain">${fmt(total(g.id))} <small>mm</small></strong>
+   <div class="detail-hero-count">${countLabel}</div>
+  </section>
+  <button class="button button-register-rain" type="button" data-action="newReading" aria-label="Registrar chuva neste pluviômetro"><span class="register-plus" aria-hidden="true">+</span><span>Registrar chuva</span><span class="register-chevron" aria-hidden="true">›</span></button>
+  <div class="section detail-history-title"><h2>Histórico de chuvas</h2></div>
+  ${rs.length?rs.map(r=>`<article class="reading"><div><strong>${fmt(r.mm)} mm</strong><time datetime="${esc(r.at)}">${esc(when(r.at))}</time>${r.notes?`<div class="notes">${esc(r.notes)}</div>`:''}</div><div class="actions"><button class="button button-soft" data-edit="${esc(r.id)}">Editar</button><button class="button button-danger" data-delete="${esc(r.id)}">Excluir</button></div></article>`).join(''):'<div class="empty detail-empty">Nenhuma chuva registrada.<br>Use <strong>Registrar chuva</strong> para começar.</div>'}
+  <div class="detail-bottom-actions"><button class="detail-delete" type="button" data-action="deleteGauge">Excluir pluviômetro</button></div>`;
+
  }
  $('fabNewGauge').hidden=Boolean(g);
  status();
