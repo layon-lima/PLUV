@@ -176,7 +176,7 @@ function render(){
   <div class="detail-bottom-actions"><button class="detail-delete" type="button" data-action="deleteGauge">Excluir pluviômetro</button></div>`;
 
  }
- $('fabNewGauge').hidden=Boolean(g);
+ $('fabNewGauge').hidden=true;
  status();
 }
 async function refresh(){state=await snapshot();render()}
@@ -282,6 +282,26 @@ $('dialog').addEventListener('cancel',event=>{
  if(quickReadingHistory){event.preventDefault();closeEditor()}
 });
 $('fabNewGauge').onclick=()=>editGauge();
+$('refreshFilesBtn').onclick=async()=>{
+ const button=$('refreshFilesBtn');
+ if(!navigator.onLine){toast('Conecte-se à internet para atualizar a interface.');return}
+ button.disabled=true;
+ try{
+  const health=await fetch('/health',{cache:'no-store'});
+  if(!health.ok)throw Error('Servidor indisponível');
+  // Remove APENAS arquivos temporarios do PWA; nunca toca no IndexedDB.
+  const names=await caches.keys();
+  await Promise.all(names.filter(name=>name.startsWith('pluv-pwa-')).map(name=>caches.delete(name)));
+  if('serviceWorker'in navigator){
+   const reg=await navigator.serviceWorker.getRegistration();
+   if(reg){
+    await reg.update();
+    reg.waiting?.postMessage('SKIP_WAITING');
+   }
+  }
+  location.reload();
+ }catch(e){toast('Não foi possível atualizar. Tente novamente com internet.');button.disabled=false}
+};
 $('syncBtn').onclick=sync;
 $('optionsBtn').onclick=()=>$('optionsDialog').showModal();
 $('closeOptions').onclick=()=>$('optionsDialog').close();
@@ -321,7 +341,15 @@ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installProm
 $('installBtn').onclick=async()=>{if(installPrompt){installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$('installBtn').hidden=true}};
 async function init(){
  try{setupNavigation();await refresh();if('serviceWorker'in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1')){
-  try{await navigator.serviceWorker.register('/sw.js')}catch(e){console.warn('Cache offline indisponível:',e)}
+  try{
+   const previous=navigator.serviceWorker.controller;
+   navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    // Apos ativar nova versao, carrega os arquivos atualizados sem apagar dados.
+    if(previous&&navigator.onLine&&!$('dialog').open&&!$('optionsDialog').open&&!$('conflictDialog').open)location.reload();
+   },{once:true});
+   const reg=await navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'});
+   reg.update().catch(()=>{});
+  }catch(e){console.warn('Cache offline indisponível:',e)}
  }sync();setInterval(()=>{if(!document.hidden)sync()},60000)}
  catch(e){$('app').innerHTML=`<div class="empty">Não foi possível abrir o banco local do navegador: ${esc(e.message)}. Verifique se o navegador permite armazenamento local e não está no modo anônimo.</div>`;lastError=e.message;status()}
 }
