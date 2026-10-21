@@ -245,11 +245,11 @@ function render(){
         <button class="button button-soft" data-gauge="${esc(g.id)}" type="button">Histórico</button>
         <button class="button button-soft" data-admin-edit="${esc(g.id)}" type="button">Editar</button>
         <button class="button button-soft" data-admin-duplicate="${esc(g.id)}" type="button">Duplicar</button>
+        <button class="button button-danger" data-admin-delete="${esc(g.id)}" type="button">Excluir</button>
+      </div>
       <div class="admin-gps">${gps?`<span class="admin-gps-value">${esc(gpsLabel(gps))}</span>
        <a class="admin-map-link" href="${esc(gpsMapUrl(gps))}" target="_blank" rel="noopener noreferrer" title="Abrir a coordenada no Google Maps">Ver mapa ↗</a>`:
        '<span class="muted">Sem GPS</span>'}</div>
-        <button class="button button-danger" data-admin-delete="${esc(g.id)}" type="button">Excluir</button>
-      </div>
     </div>`;
   }).join('');
   app.innerHTML=`<section class="admin-head">
