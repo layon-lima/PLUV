@@ -404,3 +404,14 @@ html:not(.pluv-mobile-mode) .admin-row{
 /* Informacao persistente no PWA apos salvar com ou sem GPS. */
 .quick-gps-summary{margin:-5px 0 15px;padding:10px 13px;background:#f1f8fa;border:1px solid #c7dee5;border-radius:10px;color:#355e70;font-size:12px;line-height:1.55}
 .quick-retry-gps{display:block;width:100%;margin:8px 0 4px;font-size:13px;min-height:42px}
+
+/* Marcadores MapLibre no OpenFreeMap (sem chamadas ao tile.openstreetmap.org) */
+.pluv-map-marker{
+ width:23px;height:23px;border:3px solid #fff;border-radius:50%;
+ background:#0886a5;box-shadow:0 2px 9px #153c5370;cursor:pointer;
+ transition:transform .14s ease,box-shadow .14s ease;
+}
+.pluv-map-marker:hover{transform:scale(1.15);box-shadow:0 4px 13px #153c537c}
+.pluv-map-marker:focus-visible{outline:3px solid #0b6e88;outline-offset:4px}
+.maplibregl-popup-content{border-radius:12px;padding:12px 14px;box-shadow:0 6px 24px #153c532f}
+.maplibregl-ctrl-group{border-radius:10px!important;overflow:hidden}
