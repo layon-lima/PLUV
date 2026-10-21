@@ -375,7 +375,10 @@ function gpsMapUrl(r){
 function quickReading(gaugeId){
  const gauge=state.gauges.find(g=>g.id===gaugeId);
  if(!gauge){toast('Pluviômetro não encontrado. Sincronize novamente.');return}
+ lastMobileGpsMessage='';
+ let gpsStatusMessage='Obtendo localização do celular…';
  const gpsPromise=captureReadingGps(message=>{
+  gpsStatusMessage=message;
   const el=$('quickGpsStatus');if(el)el.textContent=message;
  });
  editor('Registrar chuva — '+gauge.name,
@@ -393,6 +396,7 @@ function quickReading(gaugeId){
    lastMobileGpsMessage=gps?'Chuva registrada com GPS ✓':'Chuva registrada sem GPS. Confira a permissão de localização.';
   }
  );
+ if($('quickGpsStatus'))$('quickGpsStatus').textContent=gpsStatusMessage;
  quickReadingHistory=true;
  history.pushState({pluvPage:'quickReading'},'',location.pathname+location.search+'#registrar');
 }
