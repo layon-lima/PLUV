@@ -22,6 +22,11 @@ CREATE TABLE IF NOT EXISTS pluv_readings (
  version bigint NOT NULL DEFAULT 1 CHECK (version>0),
  updated_at timestamptz NOT NULL DEFAULT now(), deleted_at timestamptz
 );
+-- GPS opcional da medicao: nunca exige coordenadas para registrar chuva.
+-- Atualizacao aditiva que preserva todos os lancamentos existentes.
+ALTER TABLE pluv_readings ADD COLUMN IF NOT EXISTS latitude numeric(9,6);
+ALTER TABLE pluv_readings ADD COLUMN IF NOT EXISTS longitude numeric(9,6);
+ALTER TABLE pluv_readings ADD COLUMN IF NOT EXISTS location_accuracy_m numeric(12,2);
 CREATE INDEX IF NOT EXISTS pluv_readings_gauge_idx ON pluv_readings(gauge_id, observed_at DESC);
 CREATE TABLE IF NOT EXISTS pluv_changes (
  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
