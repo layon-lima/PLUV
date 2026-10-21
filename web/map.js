@@ -6,6 +6,12 @@ let mapLibraryPromise=null;
 let activeMap=null;
 let requestSeq=0;
 
+function googleSatelliteUrl(latitude,longitude,zoom=18){
+ const center=Number(latitude).toFixed(6)+','+Number(longitude).toFixed(6);
+ return 'https://www.google.com/maps/@?api=1&map_action=map&center='+
+  encodeURIComponent(center)+'&zoom='+zoom+'&basemap=satellite';
+}
+
 function ensureMapLibre(){
  if(mapLibraryPromise)return mapLibraryPromise;
  mapLibraryPromise=(async()=>{
@@ -59,9 +65,9 @@ function popupNode(points){
  }
  const link=document.createElement('a');
  const {latitude,longitude}=points[0];
- link.href='https://www.google.com/maps?q='+latitude+','+longitude;
+ link.href=googleSatelliteUrl(latitude,longitude);
  link.target='_blank';link.rel='noopener noreferrer';
- link.textContent='Abrir coordenadas no Google Maps ↗';
+ link.textContent='Ver no Google Satélite ↗';
  box.appendChild(link);
  return box;
 }
@@ -157,14 +163,18 @@ export function mapScreenHtml(gauges,readings,filterId=''){
   <td><strong>${safe(p.name)}</strong></td><td>${safe(p.when)}</td>
   <td class="numeric">${safe(p.mm)} mm</td>
   <td class="gps-coords">${safe(p.latitude.toFixed(6)+', '+p.longitude.toFixed(6))}</td>
-  <td><a href="${safe('https://www.google.com/maps?q='+p.latitude+','+p.longitude)}"
-    target="_blank" rel="noopener noreferrer">Abrir ↗</a></td>
+  <td><a href="${safe(googleSatelliteUrl(p.latitude,p.longitude))}"
+    target="_blank" rel="noopener noreferrer">Satélite ↗</a></td>
  </tr>`).join('');
  return `<section class="map-screen">
   <header class="map-head">
    <div><span class="admin-eyebrow">GERENCIAMENTO · LOCALIZAÇÃO</span>
     <h2>Mapa das medições</h2>
-    <p>Confira no mapa onde o celular estava quando registrou cada chuva.</p></div>
+    <p>Confira no mapa onde o celular estava quando registrou cada chuva.</p>
+    ${points.length?`<a class="map-satellite-link" target="_blank" rel="noopener noreferrer"
+      href="${safe(googleSatelliteUrl(points[0].latitude,points[0].longitude))}">
+      ◉ Ver no Google Satélite ↗</a>`:''}
+   </div>
    <div class="map-filter"><label for="mapGauge">Pluviômetro</label>
     <select id="mapGauge"><option value="">Todos</option>${options}</select></div>
   </header>
@@ -184,6 +194,6 @@ export function mapScreenHtml(gauges,readings,filterId=''){
    </table></div>
    ${points.length>200?`<p class="map-status">A tabela mostra os 200 registros mais recentes. O mapa inclui os ${points.length} registros.</p>`:''}
   </section>
-  <p class="map-notice">Base cartográfica: OpenFreeMap / dados OpenStreetMap. Os pontos representam a posição do celular na hora da medição, não necessariamente a localização fixa do pluviômetro. O mapa requer internet, mas registrar chuva não.</p>
+  <p class="map-notice">O mapa do PLUV usa OpenFreeMap para mostrar todos os marcadores. "Google Satélite" abre em uma nova aba, centrado na coordenada selecionada; não mostra todos os marcadores juntos. Para incorporar o mapa do Google diretamente, é necessária a API oficial. A posição é do celular no momento da medição.</p>
  </section>`;
 }
