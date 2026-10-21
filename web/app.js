@@ -98,7 +98,7 @@ function filterAdminRows(){
 function reportData(){
  const gauges=[...state.gauges].filter(g=>!reportGauge||g.id===reportGauge).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
  const known=new Map(gauges.map(g=>[g.id,g]));
- const readings=reportStart<=reportEnd?state.readings.filter(r=>{
+ const readings=reportStart&&reportEnd&&reportStart<=reportEnd?state.readings.filter(r=>{
   if(!known.has(r.gaugeId))return false;
   const date=new Date(r.at);
   if(Number.isNaN(date.getTime()))return false;
@@ -112,7 +112,7 @@ function reportData(){
 function renderReport(){
  const {gauges,readings,summary,totalMm}=reportData();
  const allOptions=[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
- const invalid=reportStart>reportEnd;
+ const invalid=!reportStart||!reportEnd||reportStart>reportEnd;
  const summaryRows=summary.map(({gauge,mm,count})=>`<tr>
   <td><strong>${esc(gauge.name)}</strong><small>${esc(gauge.location||'Sem localização')}</small></td>
   <td class="numeric">${count}</td><td class="numeric"><strong>${fmt(mm)} mm</strong></td>
@@ -136,7 +136,7 @@ function renderReport(){
        ${allOptions.map(g=>`<option value="${esc(g.id)}" ${reportGauge===g.id?'selected':''}>${esc(g.name)}</option>`).join('')}
       </select></div>
    </div>
-   ${invalid?'<p class="report-warning" role="alert">A data inicial não pode ser posterior à data final.</p>':''}
+   ${invalid?'<p class="report-warning" role="alert">Informe um período válido, com data inicial igual ou anterior à data final.</p>':''}
    <p class="report-period">Período: ${esc(reportStart.split('-').reverse().join('/'))} a ${esc(reportEnd.split('-').reverse().join('/'))} · Dados disponíveis neste dispositivo, inclusive alterações ainda não sincronizadas.</p>
    <div class="admin-stats report-stats">
     <div class="admin-stat"><span>Pluviômetros selecionados</span><strong>${gauges.length}</strong></div>
@@ -171,7 +171,7 @@ function csvCell(value){
  return '"'+text.replace(/"/g,'""')+'"';
 }
 function exportReport(){
- if(reportStart>reportEnd){toast('Corrija as datas do relatório.');return}
+ if(!reportStart||!reportEnd||reportStart>reportEnd){toast('Corrija as datas do relatório.');return}
  const {readings,summary}=reportData(),nameById=new Map(state.gauges.map(g=>[g.id,g]));
  const lines=[
   ['PLUV — RELATÓRIO DE CHUVAS'],
@@ -386,12 +386,13 @@ $('app').addEventListener('click',async event=>{
 });
 $('app').addEventListener('input',event=>{
  if(event.target?.id==='adminSearch'){adminQuery=event.target.value;filterAdminRows()}
- if(!isMobileMode()&&['reportStart','reportEnd','reportGauge'].includes(event.target?.id)){
-  if(event.target.id==='reportStart')reportStart=event.target.value;
-  if(event.target.id==='reportEnd')reportEnd=event.target.value;
-  if(event.target.id==='reportGauge')reportGauge=event.target.value;
-  render();
- }
+});
+$('app').addEventListener('change',event=>{
+ if(isMobileMode()||!['reportStart','reportEnd','reportGauge'].includes(event.target?.id))return;
+ if(event.target.id==='reportStart')reportStart=event.target.value;
+ if(event.target.id==='reportEnd')reportEnd=event.target.value;
+ if(event.target.id==='reportGauge')reportGauge=event.target.value;
+ render();
 });
 $('desktopNav').addEventListener('click',event=>{
  const button=event.target.closest('[data-admin-section]');
@@ -410,7 +411,7 @@ $('app').addEventListener('click',event=>{
  if(!button||isMobileMode())return;
  if(button.hasAttribute('data-report-export'))exportReport();
  if(button.hasAttribute('data-report-print')){
-  if(reportStart>reportEnd){toast('Corrija as datas do relatório.');return}
+  if(!reportStart||!reportEnd||reportStart>reportEnd){toast('Corrija as datas do relatório.');return}
   window.print();
  }
 });
