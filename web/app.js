@@ -232,6 +232,7 @@ function render(){
   const sorted=[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
   const rows=sorted.map(g=>{
     const latest=state.readings.filter(r=>r.gaugeId===g.id).sort((a,b)=>b.at.localeCompare(a.at))[0];
+    const gps=gpsForGauge(g.id);
     const match=esc((g.name+' '+g.location).toLocaleLowerCase('pt-BR'));
     return `<div class="admin-row" data-admin-match="${match}">
       <div class="admin-gauge">
@@ -244,13 +245,16 @@ function render(){
         <button class="button button-soft" data-gauge="${esc(g.id)}" type="button">Histórico</button>
         <button class="button button-soft" data-admin-edit="${esc(g.id)}" type="button">Editar</button>
         <button class="button button-soft" data-admin-duplicate="${esc(g.id)}" type="button">Duplicar</button>
+      <div class="admin-gps">${gps?`<span class="admin-gps-value">${esc(gpsLabel(gps))}</span>
+       <a class="admin-map-link" href="${esc(gpsMapUrl(gps))}" target="_blank" rel="noopener noreferrer" title="Abrir a coordenada no Google Maps">Ver mapa ↗</a>`:
+       '<span class="muted">Sem GPS</span>'}</div>
         <button class="button button-danger" data-admin-delete="${esc(g.id)}" type="button">Excluir</button>
       </div>
     </div>`;
   }).join('');
   app.innerHTML=`<section class="admin-head">
     <div><span class="admin-eyebrow">PAINEL DE GERENCIAMENTO</span><h2>Pluviômetros</h2>
-    <p>Cadastre os pluviômetros do campo e acompanhe todas as medições recebidas.</p></div>
+    <p>Cadastre os pluviômetros, acompanhe as medições e veja as coordenadas capturadas pelos celulares. GPS corresponde ao local do primeiro registro autorizado.</p></div>
     <button class="button admin-add" data-action="newGauge" type="button">+ Novo pluviômetro</button>
    </section>
    <section class="admin-stats" aria-label="Resumo geral">
@@ -261,12 +265,13 @@ function render(){
    <section class="admin-list-head"><h3>Cadastro e histórico</h3>
     <input id="adminSearch" type="search" placeholder="Pesquisar nome ou localização" aria-label="Pesquisar pluviômetros" value="${esc(adminQuery)}" autocomplete="off">
    </section>
-   ${rows?`<div class="admin-table"><div class="admin-table-head"><span>PLUVIÔMETRO</span><span>CHUVA</span><span>ÚLTIMA MEDIÇÃO</span><span>AÇÕES</span></div>${rows}</div><div id="adminSearchEmpty" class="empty hidden">Nenhum pluviômetro corresponde à pesquisa.</div>`:'<div class="empty">Nenhum pluviômetro cadastrado. Clique em <strong>+ Novo pluviômetro</strong>.</div>'}`;
+   ${rows?`<div class="admin-table"><div class="admin-table-head"><span>PLUVIÔMETRO</span><span>CHUVA</span><span>ÚLTIMA MEDIÇÃO</span><span>AÇÕES</span><span>GPS / MAPA</span></div>${rows}</div><div id="adminSearchEmpty" class="empty hidden">Nenhum pluviômetro corresponde à pesquisa.</div>`:'<div class="empty">Nenhum pluviômetro cadastrado. Clique em <strong>+ Novo pluviômetro</strong>.</div>'}`;
   filterAdminRows();
 
  }else{
   const rs=state.readings.filter(r=>r.gaugeId===selected).sort((a,b)=>b.at.localeCompare(a.at));
   const countLabel=rs.length===1?'1 medição registrada':rs.length+' medições registradas';
+  const gps=gpsForGauge(g.id);
   app.innerHTML=`<section class="hero hero-detail" aria-label="Resumo do pluviômetro">
    <div class="detail-hero-toolbar">
      <button class="detail-hero-icon" type="button" data-action="back" aria-label="Voltar aos pluviômetros" title="Voltar">←</button>
@@ -279,6 +284,8 @@ function render(){
    <div class="detail-hero-label">Chuva acumulada</div>
    <strong class="detail-hero-rain">${fmt(total(g.id))} <small>mm</small></strong>
    <div class="detail-hero-count">${countLabel}</div>
+   ${gps?`<div class="detail-gps"><span>Primeira coordenada GPS: ${esc(gpsLabel(gps))}</span>
+      <a href="${esc(gpsMapUrl(gps))}" target="_blank" rel="noopener noreferrer">Abrir no mapa ↗</a></div>`:''}
   </section>
   <button class="button button-register-rain" type="button" data-action="newReading" aria-label="Registrar chuva neste pluviômetro"><span class="register-plus" aria-hidden="true">+</span><span>Registrar chuva</span><span class="register-chevron" aria-hidden="true">›</span></button>
   <div class="section detail-history-title"><h2>Histórico de chuvas</h2></div>
@@ -300,17 +307,49 @@ function closeEditor(){
   if(history.state?.pluvPage==='quickReading')history.back();
  }
 }
+// GPS somente durante registro iniciado pelo usuario, sem rastreamento continuo.
+// Na primeira vez o sistema solicita permissao; falha/recusa nao impede gravar chuva.
+function captureReadingGps(){
+ if(!navigator.geolocation||!window.isSecureContext)return Promise.resolve(null);
+ return new Promise(resolve=>{
+  let settled=false;
+  const done=value=>{if(!settled){settled=true;resolve(value)}};
+  const timer=setTimeout(()=>done(null),6500);
+  try{
+   navigator.geolocation.getCurrentPosition(position=>{
+    clearTimeout(timer);
+    const {latitude,longitude,accuracy}=position.coords;
+    const valid=Number.isFinite(latitude)&&Math.abs(latitude)<=90&&Number.isFinite(longitude)&&Math.abs(longitude)<=180;
+    done(valid?{latitude:Number(latitude.toFixed(6)),longitude:Number(longitude.toFixed(6)),
+     accuracyM:Number.isFinite(accuracy)?Math.max(0,Number(accuracy.toFixed(2))):null}:null);
+   },()=>{clearTimeout(timer);done(null)},
+   {enableHighAccuracy:true,timeout:5500,maximumAge:60000});
+  }catch{clearTimeout(timer);done(null)}
+ });
+}
+function gpsForGauge(id){
+ const readings=state.readings.filter(r=>r.gaugeId===id&&r.latitude!=null&&r.longitude!=null&&
+  Number.isFinite(Number(r.latitude))&&Number.isFinite(Number(r.longitude)));
+ return readings.sort((a,b)=>a.at.localeCompare(b.at))[0]||null;
+}
+function gpsLabel(r){return Number(r.latitude).toFixed(6)+', '+Number(r.longitude).toFixed(6)}
+function gpsMapUrl(r){
+ return 'https://www.google.com/maps?q='+encodeURIComponent(Number(r.latitude).toFixed(6)+','+Number(r.longitude).toFixed(6));
+}
+
 function quickReading(gaugeId){
  const gauge=state.gauges.find(g=>g.id===gaugeId);
  if(!gauge){toast('Pluviômetro não encontrado. Sincronize novamente.');return}
+ const gpsPromise=captureReadingGps();
  editor('Registrar chuva — '+gauge.name,
   '<div class="field quick-mm-field"><label for="mm">Chuva medida (mm)</label>'+
   '<input id="mm" name="mm" type="number" inputmode="decimal" min="0" max="10000" step="0.01" placeholder="Ex.: 12,5" required autofocus></div>'+
-  '<p class="small muted">Data e hora registradas automaticamente.</p>',
+  '<p class="small muted">Data e hora automáticas. A localização GPS deste lançamento será registrada se autorizada; o celular pode pedir permissão na primeira vez. Sem GPS, a chuva será salva normalmente.</p>',
   async data=>{
    const raw=String(data.get('mm')??'').trim().replace(',','.');
    if(!raw||!Number.isFinite(Number(raw))||Number(raw)<0||Number(raw)>10000)throw Error('Informe a quantidade de chuva em mm.');
-   await saveReading({gaugeId,mm:Number(raw),notes:''});
+   const gps=await gpsPromise;
+   await saveReading({gaugeId,mm:Number(raw),notes:'',...(gps||{})});
   }
  );
  quickReadingHistory=true;
