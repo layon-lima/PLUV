@@ -1,10 +1,15 @@
 import {API,uid,snapshot,saveGauge,saveReading,deleteGauge,deleteReading,nextPending,acceptOperation,rejectOperation,applyChanges,resolveConflict,backup,importBackup} from './db.js';
-const $=id=>document.getElementById(id);let state={gauges:[],readings:[],outbox:[],cursor:0};let selected=null;let syncing=false;let lastError='';let syncTimer=null;let conflictSeq=null;let installPrompt=null;
+const $=id=>document.getElementById(id);let state={gauges:[],readings:[],outbox:[],cursor:0};let selected=null;let syncing=false;let lastError='';let syncTimer=null;let conflictSeq=null;let installPrompt=null;let quickReadingHistory=false;
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:2});
 const when=v=>{try{return new Date(v).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}catch{return v}};
 const total=id=>state.readings.filter(r=>!id||r.gaugeId===id).reduce((sum,r)=>sum+r.mm,0);
 const count=id=>state.readings.filter(r=>r.gaugeId===id).length;
+// O Android compilado e navegadores de celular mostram somente o registro rapido.
+// No desktop permanecem cadastro, resumo, historico e administracao.
+const isMobileMode=()=>Boolean(window.PLUV_ANDROID)
+ || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+ || window.matchMedia('(max-width:700px)').matches;
 
 // Navegacao real do navegador/PWA: o botao Voltar do Android volta ao dashboard.
 const detailPrefix='#pluv/';
@@ -17,6 +22,12 @@ function gaugeFromUrl(){
  }catch{return null}
 }
 function setupNavigation(){
+ if(isMobileMode()){
+  // O app movel tem uma tela so. Remove rotas antigas de detalhes.
+  history.replaceState({pluvPage:'home'},'',location.pathname+location.search);
+  selected=null;
+  return;
+ }
  const id=gaugeFromUrl();
  if(id&&!history.state?.pluvPage){
   const url=location.pathname+location.search;
@@ -45,7 +56,11 @@ function showHome(){
  window.scrollTo(0,0);
 }
 window.addEventListener('popstate',()=>{
- selected=gaugeFromUrl();
+ if(quickReadingHistory){
+  quickReadingHistory=false;
+  if($('dialog').open)$('dialog').close();
+ }
+ selected=isMobileMode()?null:gaugeFromUrl();
  render();
  window.scrollTo(0,0);
 });
@@ -54,7 +69,7 @@ window.addEventListener('popstate',()=>{
 window.PLUV_NATIVE_BACK=()=>{
  const opened=['dialog','optionsDialog','conflictDialog']
   .map(id=>$(id)).find(element=>element?.open);
- if(opened){opened.close();return true}
+ if(opened){if(opened.id==='dialog'&&quickReadingHistory){closeEditor();return true}opened.close();return true}
  if(selected||gaugeFromUrl()){showHome();return true}
  return false;
 };
@@ -72,6 +87,30 @@ function status(){
 }
 function render(){
  const app=$('app');const g=state.gauges.find(x=>x.id===selected);
+ if(isMobileMode()){
+  selected=null;
+  document.documentElement.classList.add('pluv-mobile-mode');
+  const cards=[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(g=>{
+   const variants=['campo','serra','lago','pasto'];
+   let hash=0;for(const ch of g.id)hash=(hash*31+ch.charCodeAt(0))>>>0;
+   const illustration=variants[hash%variants.length];
+   return `<button class="quick-gauge-card" type="button" data-gauge="${esc(g.id)}" aria-label="Registrar chuva em ${esc(g.name)}">
+     <span class="quick-gauge-art"><img src="/icons/pluviometro-${illustration}.svg" alt="" width="74" height="74"></span>
+     <span class="quick-gauge-info"><strong>${esc(g.name)}</strong>
+       ${g.location?`<span>${esc(g.location)}</span>`:''}
+     </span>
+     <span class="quick-gauge-plus" aria-hidden="true">+</span>
+    </button>`;
+  }).join('');
+  app.innerHTML=`<section class="quick-home">
+     <div class="quick-heading"><h2>Pluviômetros</h2><p>Toque em um pluviômetro para registrar a chuva.</p></div>
+     ${cards?`<div class="quick-gauges">${cards}</div>`:'<div class="empty quick-empty">Nenhum pluviômetro cadastrado.<br>Cadastre os pluviômetros na versão para computador e sincronize este aparelho.</div>'}
+   </section>`;
+  $('fabNewGauge').hidden=true;
+  status();
+  return;
+ }
+ document.documentElement.classList.remove('pluv-mobile-mode');
  if(!g){
   selected=null;
   const cards=[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(g=>{
@@ -127,8 +166,31 @@ function render(){
 }
 async function refresh(){state=await snapshot();render()}
 function editor(title,fields,submit){$('modalTitle').textContent=title;$('fields').innerHTML=fields;$('formError').classList.add('hidden');$('editorForm').onsubmit=async event=>{
- event.preventDefault();const save=$('saveDialog');save.disabled=true;try{await submit(new FormData(event.target));$('dialog').close();await refresh();scheduleSync();toast('Salvo neste dispositivo')}catch(e){$('formError').textContent=e.message;$('formError').classList.remove('hidden')}finally{save.disabled=false}
+ event.preventDefault();const save=$('saveDialog');save.disabled=true;try{await submit(new FormData(event.target));closeEditor();await refresh();scheduleSync();toast('Medição salva neste dispositivo')}catch(e){$('formError').textContent=e.message;$('formError').classList.remove('hidden')}finally{save.disabled=false}
 };$('dialog').showModal()}
+function closeEditor(){
+ if($('dialog').open)$('dialog').close();
+ if(quickReadingHistory){
+  quickReadingHistory=false;
+  if(history.state?.pluvPage==='quickReading')history.back();
+ }
+}
+function quickReading(gaugeId){
+ const gauge=state.gauges.find(g=>g.id===gaugeId);
+ if(!gauge){toast('Pluviômetro não encontrado. Sincronize novamente.');return}
+ editor('Registrar chuva — '+gauge.name,
+  '<div class="field quick-mm-field"><label for="mm">Chuva medida (mm)</label>'+
+  '<input id="mm" name="mm" type="number" inputmode="decimal" min="0" max="10000" step="0.01" placeholder="Ex.: 12,5" required autofocus></div>'+
+  '<p class="small muted">Data e hora registradas automaticamente.</p>',
+  async data=>{
+   const raw=String(data.get('mm')??'').trim().replace(',','.');
+   if(!raw||!Number.isFinite(Number(raw))||Number(raw)<0||Number(raw)>10000)throw Error('Informe a quantidade de chuva em mm.');
+   await saveReading({gaugeId,mm:Number(raw),notes:''});
+  }
+ );
+ quickReadingHistory=true;
+ history.pushState({pluvPage:'quickReading'},'',location.pathname+location.search+'#registrar');
+}
 function input(name,label,value='',max=160,required=false){return `<div class="field"><label for="${name}">${label}</label><input id="${name}" name="${name}" value="${esc(value)}" maxlength="${max}" ${required?'required':''}></div>`}
 function editGauge(id){const g=state.gauges.find(x=>x.id===id);editor(g?'Editar pluviômetro':'Novo pluviômetro',input('name','Nome',g?.name||'',160,true)+input('location','Localização',g?.location||'',240)+`<div class="field"><label for="description">Descrição</label><textarea name="description" id="description" maxlength="2000">${esc(g?.description||'')}</textarea></div>`,async data=>{
  await saveGauge({id:g?.id,name:String(data.get('name')||''),location:String(data.get('location')||''),description:String(data.get('description')||'')});
@@ -177,7 +239,7 @@ async function chooseConflict(keepLocal){try{await resolveConflict(conflictSeq,k
 $('app').addEventListener('click',async event=>{
  const b=event.target.closest('button');if(!b)return;
  try{
- if(b.dataset.gauge){showGauge(b.dataset.gauge);return}
+ if(b.dataset.gauge){if(isMobileMode())quickReading(b.dataset.gauge);else showGauge(b.dataset.gauge);return}
  if(b.dataset.edit){editReading(b.dataset.edit);return}
  if(b.dataset.delete){if(confirm('Excluir esta medição? Ela ficará excluída também nos outros dispositivos quando sincronizar.')){await deleteReading(b.dataset.delete);await refresh();scheduleSync()}return}
  switch(b.dataset.action){
@@ -190,7 +252,10 @@ $('app').addEventListener('click',async event=>{
  }catch(e){toast(e.message)}
 });
 $('banner').addEventListener('click',event=>{if(event.target.id==='openConflict')openConflict()});
-$('closeDialog').onclick=$('cancelDialog').onclick=()=>$('dialog').close();
+$('closeDialog').onclick=$('cancelDialog').onclick=closeEditor;
+$('dialog').addEventListener('cancel',event=>{
+ if(quickReadingHistory){event.preventDefault();closeEditor()}
+});
 $('fabNewGauge').onclick=()=>editGauge();
 $('syncBtn').onclick=sync;
 $('optionsBtn').onclick=()=>$('optionsDialog').showModal();
@@ -217,6 +282,15 @@ $('importBtn').onclick=()=>$('importFile').click();
 $('importFile').onchange=async event=>{try{const file=event.target.files?.[0];if(!file)return;const data=JSON.parse(await file.text());if(!confirm('Importar registros ausentes deste backup? Os dados atuais serão preservados.'))return;const count=await importBackup(data);await refresh();scheduleSync();toast(`${count} registros importados`)}catch(e){toast(e.message)}finally{event.target.value=''}};
 window.addEventListener('online',()=>{lastError='';status();sync()});
 window.addEventListener('offline',status);
+let previousMobileMode=isMobileMode();
+window.addEventListener('resize',()=>{
+ const next=isMobileMode();
+ if(next!==previousMobileMode){
+  previousMobileMode=next;
+  if(next)setupNavigation();
+  render();
+ }
+});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('installBtn').hidden=false});
 $('installBtn').onclick=async()=>{if(installPrompt){installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$('installBtn').hidden=true}};
