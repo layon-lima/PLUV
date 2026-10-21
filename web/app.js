@@ -1,5 +1,6 @@
 import {API,uid,snapshot,saveGauge,saveReading,deleteGauge,deleteReading,nextPending,acceptOperation,rejectOperation,applyChanges,resolveConflict,backup,importBackup} from './db.js';
-const $=id=>document.getElementById(id);let state={gauges:[],readings:[],outbox:[],cursor:0};let selected=null;let syncing=false;let lastError='';let syncTimer=null;let conflictSeq=null;let installPrompt=null;let quickReadingHistory=false;let adminQuery='';let adminTab='gauges';
+import {collectMapPoints,mapScreenHtml,mountReadingsMap,disposeReadingsMap} from './map.js';
+const $=id=>document.getElementById(id);let state={gauges:[],readings:[],outbox:[],cursor:0};let selected=null;let syncing=false;let lastError='';let syncTimer=null;let conflictSeq=null;let installPrompt=null;let quickReadingHistory=false;let adminQuery='';let adminTab='gauges';let mapGauge='';
 const asDay=date=>[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
 let reportStart=asDay(new Date(new Date().getFullYear(),new Date().getMonth(),1));
 let reportEnd=asDay(new Date());let reportGauge='';
@@ -191,6 +192,7 @@ function exportReport(){
 }
 
 function render(){
+ disposeReadingsMap();
  const app=$('app');const g=state.gauges.find(x=>x.id===selected);
  if(isMobileMode()){
   selected=null;
@@ -226,6 +228,14 @@ function render(){
   app.innerHTML=renderReport();
   $('fabNewGauge').hidden=true;
   status();return;
+ }
+ if(adminTab==='map'){
+  const points=collectMapPoints(state.gauges,state.readings,mapGauge);
+  app.innerHTML=mapScreenHtml(state.gauges,state.readings,mapGauge);
+  $('fabNewGauge').hidden=true;
+  status();
+  if(points.length)mountReadingsMap(points);
+  return;
  }
  if(!g){
   selected=null;
@@ -427,7 +437,11 @@ $('app').addEventListener('input',event=>{
  if(event.target?.id==='adminSearch'){adminQuery=event.target.value;filterAdminRows()}
 });
 $('app').addEventListener('change',event=>{
- if(isMobileMode()||!['reportStart','reportEnd','reportGauge'].includes(event.target?.id))return;
+ if(isMobileMode())return;
+ if(event.target?.id==='mapGauge'){
+  mapGauge=event.target.value;render();return;
+ }
+ if(!['reportStart','reportEnd','reportGauge'].includes(event.target?.id))return;
  if(event.target.id==='reportStart')reportStart=event.target.value;
  if(event.target.id==='reportEnd')reportEnd=event.target.value;
  if(event.target.id==='reportGauge')reportGauge=event.target.value;
@@ -437,7 +451,7 @@ $('desktopNav').addEventListener('click',event=>{
  const button=event.target.closest('[data-admin-section]');
  if(!button||isMobileMode())return;
  const target=button.dataset.adminSection;
- if(!['gauges','reports'].includes(target))return;
+ if(!['gauges','reports','map'].includes(target))return;
  adminTab=target;
  if(selected){
   selected=null;
