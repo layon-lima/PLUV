@@ -1,6 +1,6 @@
 import {API,uid,snapshot,saveGauge,saveReading,deleteGauge,deleteReading,nextPending,acceptOperation,rejectOperation,applyChanges,resolveConflict,backup,importBackup} from './db.js';
 import {collectMapPoints,mapScreenHtml,mountReadingsMap,disposeReadingsMap} from './map.js';
-const $=id=>document.getElementById(id);let state={gauges:[],readings:[],outbox:[],cursor:0};let selected=null;let syncing=false;let lastError='';let syncTimer=null;let conflictSeq=null;let installPrompt=null;let quickReadingHistory=false;let adminQuery='';let adminTab='gauges';let mapGauge='';
+const $=id=>document.getElementById(id);let state={gauges:[],readings:[],outbox:[],cursor:0};let selected=null;let syncing=false;let lastError='';let syncTimer=null;let conflictSeq=null;let installPrompt=null;let quickReadingHistory=false;let adminQuery='';let adminTab='gauges';let mapGauge='';let lastMobileGpsMessage='';
 const asDay=date=>[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
 let reportStart=asDay(new Date(new Date().getFullYear(),new Date().getMonth(),1));
 let reportEnd=asDay(new Date());let reportGauge='';
@@ -308,7 +308,7 @@ function render(){
 }
 async function refresh(){state=await snapshot();render()}
 function editor(title,fields,submit){$('modalTitle').textContent=title;$('fields').innerHTML=fields;$('formError').classList.add('hidden');$('editorForm').onsubmit=async event=>{
- event.preventDefault();const save=$('saveDialog');save.disabled=true;try{await submit(new FormData(event.target));closeEditor();await refresh();scheduleSync();toast(isMobileMode()?'Chuva registrada neste dispositivo':'Salvo neste dispositivo')}catch(e){$('formError').textContent=e.message;$('formError').classList.remove('hidden')}finally{save.disabled=false}
+ event.preventDefault();const save=$('saveDialog');save.disabled=true;try{await submit(new FormData(event.target));closeEditor();await refresh();scheduleSync();toast(isMobileMode()&&lastMobileGpsMessage?lastMobileGpsMessage:isMobileMode()?'Chuva registrada neste dispositivo':'Salvo neste dispositivo');lastMobileGpsMessage=''}catch(e){$('formError').textContent=e.message;$('formError').classList.remove('hidden')}finally{save.disabled=false}
 };$('dialog').showModal()}
 function closeEditor(){
  if($('dialog').open)$('dialog').close();
@@ -319,22 +319,47 @@ function closeEditor(){
 }
 // GPS somente durante registro iniciado pelo usuario, sem rastreamento continuo.
 // Na primeira vez o sistema solicita permissao; falha/recusa nao impede gravar chuva.
-function captureReadingGps(){
- if(!navigator.geolocation||!window.isSecureContext)return Promise.resolve(null);
+// GPS solicitado apenas ao abrir o formulario de registro. A autorizacao e do
+// sistema operacional/navegador; nunca acompanha o usuario em segundo plano.
+function captureReadingGps(update=()=>{}){
+ if(!window.isSecureContext){
+  update('GPS indisponível: abra o PLUV pelo endereço HTTPS.');
+  return Promise.resolve(null);
+ }
+ if(!navigator.geolocation){
+  update('GPS não disponível neste navegador/dispositivo.');
+  return Promise.resolve(null);
+ }
+ update('Obtendo localização do celular… Na primeira vez, permita o acesso quando solicitado.');
  return new Promise(resolve=>{
-  let settled=false;
-  const done=value=>{if(!settled){settled=true;resolve(value)}};
-  const timer=setTimeout(()=>done(null),6500);
+  let done=false;
+  const finish=(coords,message)=>{
+   if(done)return;
+   done=true;clearTimeout(timer);
+   update(message);
+   resolve(coords);
+  };
+  // A versao anterior encerrava o GPS cedo demais, inclusive durante o prompt.
+  const timer=setTimeout(()=>finish(null,'GPS demorou para responder. Chuva poderá ser salva sem coordenadas.'),28000);
   try{
    navigator.geolocation.getCurrentPosition(position=>{
-    clearTimeout(timer);
     const {latitude,longitude,accuracy}=position.coords;
-    const valid=Number.isFinite(latitude)&&Math.abs(latitude)<=90&&Number.isFinite(longitude)&&Math.abs(longitude)<=180;
-    done(valid?{latitude:Number(latitude.toFixed(6)),longitude:Number(longitude.toFixed(6)),
-     accuracyM:Number.isFinite(accuracy)?Math.max(0,Number(accuracy.toFixed(2))):null}:null);
-   },()=>{clearTimeout(timer);done(null)},
-   {enableHighAccuracy:true,timeout:5500,maximumAge:60000});
-  }catch{clearTimeout(timer);done(null)}
+    if(!Number.isFinite(latitude)||!Number.isFinite(longitude)||
+      Math.abs(latitude)>90||Math.abs(longitude)>180){
+     finish(null,'O aparelho retornou coordenadas inválidas.');return;
+    }
+    const gps={latitude:Number(latitude.toFixed(6)),longitude:Number(longitude.toFixed(6)),
+     accuracyM:Number.isFinite(accuracy)?Math.max(0,Number(accuracy.toFixed(2))):null};
+    const quality=gps.accuracyM===null?'precisão não informada':
+     'precisão aproximada '+Math.round(gps.accuracyM)+' m';
+    finish(gps,'GPS obtido ✓ ('+quality+'). A localização será salva com a medição.');
+   },error=>{
+    const reason=error?.code===1?'GPS negado. Permita o acesso à localização nas configurações do app.':
+     error?.code===2?'Não foi possível determinar a localização. Confira o GPS do celular.':
+     'GPS demorou para responder. Você ainda pode registrar a chuva.';
+    finish(null,reason);
+   },{enableHighAccuracy:true,timeout:22000,maximumAge:120000});
+  }catch{finish(null,'Falha ao solicitar GPS. Chuva poderá ser registrada sem localização.')}
  });
 }
 function gpsForGauge(id){
@@ -350,16 +375,22 @@ function gpsMapUrl(r){
 function quickReading(gaugeId){
  const gauge=state.gauges.find(g=>g.id===gaugeId);
  if(!gauge){toast('Pluviômetro não encontrado. Sincronize novamente.');return}
- const gpsPromise=captureReadingGps();
+ const gpsPromise=captureReadingGps(message=>{
+  const el=$('quickGpsStatus');if(el)el.textContent=message;
+ });
  editor('Registrar chuva — '+gauge.name,
   '<div class="field quick-mm-field"><label for="mm">Chuva medida (mm)</label>'+
   '<input id="mm" name="mm" type="number" inputmode="decimal" min="0" max="10000" step="0.01" placeholder="Ex.: 12,5" required autofocus></div>'+
-  '<p class="small muted">Data e hora automáticas. A localização GPS deste lançamento será registrada se autorizada; o celular pode pedir permissão na primeira vez. Sem GPS, a chuva será salva normalmente.</p>',
+  '<p class="small muted">Data e hora automáticas. GPS é solicitado ao registrar chuva, com autorização do celular.</p>'+
+  '<p class="quick-gps-status" id="quickGpsStatus" role="status">Obtendo localização do celular…</p>',
   async data=>{
    const raw=String(data.get('mm')??'').trim().replace(',','.');
    if(!raw||!Number.isFinite(Number(raw))||Number(raw)<0||Number(raw)>10000)throw Error('Informe a quantidade de chuva em mm.');
+   const pending=$('quickGpsStatus');
+   if(pending)pending.textContent='Verificando GPS antes de salvar a chuva…';
    const gps=await gpsPromise;
    await saveReading({gaugeId,mm:Number(raw),notes:'',...(gps||{})});
+   lastMobileGpsMessage=gps?'Chuva registrada com GPS ✓':'Chuva registrada sem GPS. Confira a permissão de localização.';
   }
  );
  quickReadingHistory=true;
