@@ -1,5 +1,8 @@
 import {API,uid,snapshot,saveGauge,saveReading,deleteGauge,deleteReading,nextPending,acceptOperation,rejectOperation,applyChanges,resolveConflict,backup,importBackup} from './db.js';
-const $=id=>document.getElementById(id);let state={gauges:[],readings:[],outbox:[],cursor:0};let selected=null;let syncing=false;let lastError='';let syncTimer=null;let conflictSeq=null;let installPrompt=null;let quickReadingHistory=false;let adminQuery='';
+const $=id=>document.getElementById(id);let state={gauges:[],readings:[],outbox:[],cursor:0};let selected=null;let syncing=false;let lastError='';let syncTimer=null;let conflictSeq=null;let installPrompt=null;let quickReadingHistory=false;let adminQuery='';let adminTab='gauges';
+const asDay=date=>[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
+let reportStart=asDay(new Date(new Date().getFullYear(),new Date().getMonth(),1));
+let reportEnd=asDay(new Date());let reportGauge='';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:2});
 const when=v=>{try{return new Date(v).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}catch{return v}};
@@ -9,7 +12,7 @@ const count=id=>state.readings.filter(r=>r.gaugeId===id).length;
 // No desktop permanecem cadastro, resumo, historico e administracao.
 const isMobileMode=()=>Boolean(window.PLUV_ANDROID)
  || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
- || window.matchMedia('(max-width:700px)').matches;
+;
 
 // Navegacao real do navegador/PWA: o botao Voltar do Android volta ao dashboard.
 const detailPrefix='#pluv/';
@@ -92,10 +95,106 @@ function filterAdminRows(){
  for(const row of rows){const matched=row.dataset.adminMatch.includes(search);row.hidden=!matched;if(matched)visible++}
  const empty=$('adminSearchEmpty');if(empty)empty.classList.toggle('hidden',visible!==0);
 }
+function reportData(){
+ const gauges=[...state.gauges].filter(g=>!reportGauge||g.id===reportGauge).sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
+ const known=new Map(gauges.map(g=>[g.id,g]));
+ const readings=reportStart<=reportEnd?state.readings.filter(r=>{
+  if(!known.has(r.gaugeId))return false;
+  const date=new Date(r.at);
+  if(Number.isNaN(date.getTime()))return false;
+  const day=asDay(date);
+  return day>=reportStart&&day<=reportEnd;
+ }).sort((a,b)=>b.at.localeCompare(a.at)):[];
+ const totals=new Map(gauges.map(g=>[g.id,{gauge:g,mm:0,count:0}]));
+ for(const r of readings){const row=totals.get(r.gaugeId);row.mm+=Number(r.mm);row.count++}
+ return {gauges,readings,summary:[...totals.values()],totalMm:readings.reduce((sum,r)=>sum+Number(r.mm),0)};
+}
+function renderReport(){
+ const {gauges,readings,summary,totalMm}=reportData();
+ const allOptions=[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
+ const invalid=reportStart>reportEnd;
+ const summaryRows=summary.map(({gauge,mm,count})=>`<tr>
+  <td><strong>${esc(gauge.name)}</strong><small>${esc(gauge.location||'Sem localização')}</small></td>
+  <td class="numeric">${count}</td><td class="numeric"><strong>${fmt(mm)} mm</strong></td>
+ </tr>`).join('');
+ const detailRows=readings.map(r=>{
+  const gauge=state.gauges.find(g=>g.id===r.gaugeId);
+  return `<tr><td>${esc(when(r.at))}</td><td>${esc(gauge?.name||'Não encontrado')}</td>
+   <td class="numeric">${fmt(r.mm)} mm</td><td>${esc(r.notes||'—')}</td></tr>`;
+ }).join('');
+ return `<section class="report-screen" id="reportPrint">
+   <div class="report-titlebar"><div><div class="admin-eyebrow">GERENCIAMENTO · RELATÓRIOS</div>
+     <h2>Relatório de chuvas</h2><p>Consulte as medições por período e por pluviômetro.</p></div>
+     <div class="report-export-actions"><button class="button button-soft" type="button" data-report-export>Exportar CSV</button>
+      <button class="button" type="button" data-report-print>Imprimir / PDF</button></div>
+   </div>
+   <div class="report-filters">
+     <div class="report-filter"><label for="reportStart">Data inicial</label><input id="reportStart" type="date" value="${esc(reportStart)}"></div>
+     <div class="report-filter"><label for="reportEnd">Data final</label><input id="reportEnd" type="date" value="${esc(reportEnd)}"></div>
+     <div class="report-filter report-filter-wide"><label for="reportGauge">Pluviômetro</label>
+      <select id="reportGauge"><option value="">Todos os pluviômetros</option>
+       ${allOptions.map(g=>`<option value="${esc(g.id)}" ${reportGauge===g.id?'selected':''}>${esc(g.name)}</option>`).join('')}
+      </select></div>
+   </div>
+   ${invalid?'<p class="report-warning" role="alert">A data inicial não pode ser posterior à data final.</p>':''}
+   <p class="report-period">Período: ${esc(reportStart.split('-').reverse().join('/'))} a ${esc(reportEnd.split('-').reverse().join('/'))} · Dados disponíveis neste dispositivo, inclusive alterações ainda não sincronizadas.</p>
+   <div class="admin-stats report-stats">
+    <div class="admin-stat"><span>Pluviômetros selecionados</span><strong>${gauges.length}</strong></div>
+    <div class="admin-stat"><span>Medições no período</span><strong>${readings.length}</strong></div>
+    <div class="admin-stat"><span>Soma das chuvas medidas</span><strong>${fmt(totalMm)} <small>mm</small></strong></div>
+   </div>
+   <section class="report-block"><h3>Resumo por pluviômetro</h3>
+    <div class="report-table-wrap"><table class="report-table"><thead><tr><th>Pluviômetro / Localização</th><th class="numeric">Medições</th><th class="numeric">Total no período</th></tr></thead>
+    <tbody>${summaryRows||'<tr><td colspan="3">Nenhum pluviômetro cadastrado.</td></tr>'}</tbody></table></div>
+   </section>
+   <section class="report-block"><h3>Medições detalhadas</h3>
+    <div class="report-table-wrap"><table class="report-table"><thead><tr><th>Data e hora</th><th>Pluviômetro</th><th class="numeric">Chuva</th><th>Observações</th></tr></thead>
+    <tbody>${detailRows||'<tr><td colspan="4">Nenhuma medição encontrada no período.</td></tr>'}</tbody></table></div>
+   </section>
+  </section>`;
+}
+function duplicateGauge(id){
+ const gauge=state.gauges.find(g=>g.id===id);
+ if(!gauge)throw Error('Pluviômetro não encontrado.');
+ const suffix=' (cópia)';
+ const name=gauge.name.slice(0,160-suffix.length)+suffix;
+ editor('Duplicar pluviômetro',
+  input('name','Nome',name,160,true)+input('location','Localização',gauge.location||'',240)+
+  `<div class="field"><label for="description">Descrição</label><textarea name="description" id="description" maxlength="2000">${esc(gauge.description||'')}</textarea></div>
+   <p class="small muted">Novo cadastro independente. As medições anteriores não serão copiadas.</p>`,
+  async data=>{await saveGauge({name:String(data.get('name')||''),location:String(data.get('location')||''),description:String(data.get('description')||'')})}
+ );
+}
+function csvCell(value){
+ let text=String(value??'').replace(/\r\n?/g,'\n');
+ if(/^\s*[=+\-@]/.test(text))text="'"+text;
+ return '"'+text.replace(/"/g,'""')+'"';
+}
+function exportReport(){
+ if(reportStart>reportEnd){toast('Corrija as datas do relatório.');return}
+ const {readings,summary}=reportData(),nameById=new Map(state.gauges.map(g=>[g.id,g]));
+ const lines=[
+  ['PLUV — RELATÓRIO DE CHUVAS'],
+  ['Período',reportStart,reportEnd],
+  [],['RESUMO POR PLUVIÔMETRO'],['Pluviômetro','Localização','Medições','Total (mm)'],
+  ...summary.map(({gauge,count,mm})=>[gauge.name,gauge.location,count,String(mm).replace('.',',')]),
+  [],['MEDIÇÕES DETALHADAS'],['Data e hora','Pluviômetro','Localização','Chuva (mm)','Observações'],
+  ...readings.map(r=>[when(r.at),nameById.get(r.gaugeId)?.name||'',nameById.get(r.gaugeId)?.location||'',String(r.mm).replace('.',','),r.notes||''])
+ ];
+ const content='\ufeff'+lines.map(cols=>cols.map(csvCell).join(';')).join('\r\n');
+ const url=URL.createObjectURL(new Blob([content],{type:'text/csv;charset=utf-8'}));
+ const link=document.createElement('a');
+ link.href=url;link.download=`PLUV_RELATORIO_${reportStart}_a_${reportEnd}.csv`;
+ document.body.appendChild(link);link.click();link.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),2000);
+ toast('Relatório CSV exportado');
+}
+
 function render(){
  const app=$('app');const g=state.gauges.find(x=>x.id===selected);
  if(isMobileMode()){
   selected=null;
+  $('desktopNav').hidden=true;
   document.documentElement.classList.add('pluv-mobile-mode');
   const cards=[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(g=>{
    const variants=['campo','serra','lago','pasto'];
@@ -118,6 +217,16 @@ function render(){
   return;
  }
  document.documentElement.classList.remove('pluv-mobile-mode');
+ $('desktopNav').hidden=false;
+ for(const btn of $('desktopNav').querySelectorAll('[data-admin-section]')){
+  btn.classList.toggle('is-active',btn.dataset.adminSection===adminTab);
+  btn.setAttribute('aria-current',btn.dataset.adminSection===adminTab?'page':'false');
+ }
+ if(adminTab==='reports'){
+  app.innerHTML=renderReport();
+  $('fabNewGauge').hidden=true;
+  status();return;
+ }
  if(!g){
   selected=null;
   const sorted=[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
@@ -134,6 +243,7 @@ function render(){
       <div class="admin-actions">
         <button class="button button-soft" data-gauge="${esc(g.id)}" type="button">Histórico</button>
         <button class="button button-soft" data-admin-edit="${esc(g.id)}" type="button">Editar</button>
+        <button class="button button-soft" data-admin-duplicate="${esc(g.id)}" type="button">Duplicar</button>
         <button class="button button-danger" data-admin-delete="${esc(g.id)}" type="button">Excluir</button>
       </div>
     </div>`;
@@ -256,6 +366,7 @@ $('app').addEventListener('click',async event=>{
  try{
  if(b.dataset.gauge){if(isMobileMode())quickReading(b.dataset.gauge);else showGauge(b.dataset.gauge);return}
  if(!isMobileMode()&&b.dataset.adminEdit){editGauge(b.dataset.adminEdit);return}
+ if(!isMobileMode()&&b.dataset.adminDuplicate){duplicateGauge(b.dataset.adminDuplicate);return}
  if(!isMobileMode()&&b.dataset.adminDelete){
   if(confirm('Excluir este pluviômetro e suas medições nos dispositivos sincronizados?')){
    await deleteGauge(b.dataset.adminDelete);await refresh();scheduleSync();
@@ -275,6 +386,33 @@ $('app').addEventListener('click',async event=>{
 });
 $('app').addEventListener('input',event=>{
  if(event.target?.id==='adminSearch'){adminQuery=event.target.value;filterAdminRows()}
+ if(!isMobileMode()&&['reportStart','reportEnd','reportGauge'].includes(event.target?.id)){
+  if(event.target.id==='reportStart')reportStart=event.target.value;
+  if(event.target.id==='reportEnd')reportEnd=event.target.value;
+  if(event.target.id==='reportGauge')reportGauge=event.target.value;
+  render();
+ }
+});
+$('desktopNav').addEventListener('click',event=>{
+ const button=event.target.closest('[data-admin-section]');
+ if(!button||isMobileMode())return;
+ const target=button.dataset.adminSection;
+ if(!['gauges','reports'].includes(target))return;
+ adminTab=target;
+ if(selected){
+  selected=null;
+  history.replaceState({pluvPage:'home'},'',location.pathname+location.search);
+ }
+ render();window.scrollTo(0,0);
+});
+$('app').addEventListener('click',event=>{
+ const button=event.target.closest('button');
+ if(!button||isMobileMode())return;
+ if(button.hasAttribute('data-report-export'))exportReport();
+ if(button.hasAttribute('data-report-print')){
+  if(reportStart>reportEnd){toast('Corrija as datas do relatório.');return}
+  window.print();
+ }
 });
 $('banner').addEventListener('click',event=>{if(event.target.id==='openConflict')openConflict()});
 $('closeDialog').onclick=$('cancelDialog').onclick=closeEditor;
