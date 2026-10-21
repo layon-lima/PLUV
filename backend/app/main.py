@@ -51,6 +51,9 @@ class ReadingData(BaseModel):
     amount_mm: Decimal = Field(ge=0, le=10000, max_digits=10, decimal_places=2)
     observed_at: AwareDatetime
     notes: str = Field(default='', max_length=2000)
+    latitude: Decimal | None = Field(default=None, ge=-90, le=90, max_digits=9, decimal_places=6)
+    longitude: Decimal | None = Field(default=None, ge=-180, le=180, max_digits=9, decimal_places=6)
+    location_accuracy_m: Decimal | None = Field(default=None, ge=0, le=999999, max_digits=12, decimal_places=2)
 
 class Operation(BaseModel):
     op_id: UUID
@@ -71,7 +74,7 @@ def health():
 
 def payload_for(kind: str, row: dict) -> dict:
     fields = ('id', 'name', 'location', 'description', 'version', 'updated_at', 'deleted_at') if kind == 'gauge' else (
-        'id', 'gauge_id', 'amount_mm', 'observed_at', 'notes', 'version', 'updated_at', 'deleted_at')
+        'id', 'gauge_id', 'amount_mm', 'observed_at', 'notes', 'latitude', 'longitude', 'location_accuracy_m', 'version', 'updated_at', 'deleted_at')
     result = {}
     for key in fields:
         value = row[key]
@@ -120,11 +123,11 @@ def process_operation(op: Operation) -> dict:
                     if gauge is None or gauge['deleted_at'] is not None:
                         return {'op_id': str(op.op_id), 'status': 'conflict', 'reason': 'gauge_missing'}
                 if op.action == 'upsert' and current is None:
-                    row = conn.execute('INSERT INTO pluv_readings(id,gauge_id,amount_mm,observed_at,notes) VALUES(%s,%s,%s,%s,%s) RETURNING *',
-                                       (op.entity_id, data.gauge_id, data.amount_mm, data.observed_at, data.notes)).fetchone()
+                    row = conn.execute('INSERT INTO pluv_readings(id,gauge_id,amount_mm,observed_at,notes,latitude,longitude,location_accuracy_m) VALUES(%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *',
+                                       (op.entity_id, data.gauge_id, data.amount_mm, data.observed_at, data.notes, data.latitude, data.longitude, data.location_accuracy_m)).fetchone()
                 elif op.action == 'upsert':
-                    row = conn.execute('UPDATE pluv_readings SET gauge_id=%s,amount_mm=%s,observed_at=%s,notes=%s,version=%s,updated_at=now() WHERE id=%s RETURNING *',
-                                       (data.gauge_id, data.amount_mm, data.observed_at, data.notes, version, op.entity_id)).fetchone()
+                    row = conn.execute('UPDATE pluv_readings SET gauge_id=%s,amount_mm=%s,observed_at=%s,notes=%s,latitude=COALESCE(%s,latitude),longitude=COALESCE(%s,longitude),location_accuracy_m=COALESCE(%s,location_accuracy_m),version=%s,updated_at=now() WHERE id=%s RETURNING *',
+                                       (data.gauge_id, data.amount_mm, data.observed_at, data.notes, data.latitude, data.longitude, data.location_accuracy_m, version, op.entity_id)).fetchone()
                 else:
                     row = conn.execute('UPDATE pluv_readings SET deleted_at=now(),version=%s,updated_at=now() WHERE id=%s RETURNING *',
                                        (version, op.entity_id)).fetchone()
