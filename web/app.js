@@ -1,5 +1,5 @@
 import {API,uid,snapshot,saveGauge,saveReading,deleteGauge,deleteReading,nextPending,acceptOperation,rejectOperation,applyChanges,resolveConflict,backup,importBackup} from './db.js';
-const $=id=>document.getElementById(id);let state={gauges:[],readings:[],outbox:[],cursor:0};let selected=null;let syncing=false;let lastError='';let syncTimer=null;let conflictSeq=null;let installPrompt=null;let quickReadingHistory=false;
+const $=id=>document.getElementById(id);let state={gauges:[],readings:[],outbox:[],cursor:0};let selected=null;let syncing=false;let lastError='';let syncTimer=null;let conflictSeq=null;let installPrompt=null;let quickReadingHistory=false;let adminQuery='';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:2});
 const when=v=>{try{return new Date(v).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}catch{return v}};
@@ -85,6 +85,13 @@ function status(){
  $('banner').classList.add('hidden');
  if(conflicts.length){setBanner(`<strong>${conflicts.length} conflito(s) de sincronização.</strong> Os registros locais continuam preservados. <button class="button button-soft" id="openConflict" type="button">Resolver agora</button>`,true)}
 }
+function filterAdminRows(){
+ const search=adminQuery.trim().toLocaleLowerCase('pt-BR');
+ const rows=[...document.querySelectorAll('[data-admin-match]')];
+ let visible=0;
+ for(const row of rows){const matched=row.dataset.adminMatch.includes(search);row.hidden=!matched;if(matched)visible++}
+ const empty=$('adminSearchEmpty');if(empty)empty.classList.toggle('hidden',visible!==0);
+}
 function render(){
  const app=$('app');const g=state.gauges.find(x=>x.id===selected);
  if(isMobileMode()){
@@ -113,31 +120,39 @@ function render(){
  document.documentElement.classList.remove('pluv-mobile-mode');
  if(!g){
   selected=null;
-  const cards=[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(g=>{
-   const latest=state.readings.filter(r=>r.gaugeId===g.id).sort((a,b)=>b.at.localeCompare(a.at))[0];
-   const variants=['campo','serra','lago','pasto'];
-   let hash=0;for(const ch of g.id)hash=(hash*31+ch.charCodeAt(0))>>>0;
-   const illustration=variants[hash%variants.length];
-   return `<button class="gauge gauge-list-card" type="button" data-gauge="${esc(g.id)}" aria-label="Abrir pluviômetro ${esc(g.name)}">
-    <span class="gauge-illustration"><img src="/icons/pluviometro-${illustration}.svg" alt="" loading="lazy" width="88" height="88"></span>
-    <span class="gauge-copy">
-      <strong class="gauge-name">${esc(g.name)}</strong>
-      <span class="place">⌖ ${esc(g.location||'Local não informado')}</span>
-      <span class="rain">${fmt(total(g.id))} <small>mm</small></span>
-      <span class="updated">◷ ${latest?'Última medição: '+esc(when(latest.at)):'Sem medições registradas'}</span>
-    </span>
-    <span class="gauge-chevron" aria-hidden="true">›</span>
-   </button>`;
+  const sorted=[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));
+  const rows=sorted.map(g=>{
+    const latest=state.readings.filter(r=>r.gaugeId===g.id).sort((a,b)=>b.at.localeCompare(a.at))[0];
+    const match=esc((g.name+' '+g.location).toLocaleLowerCase('pt-BR'));
+    return `<div class="admin-row" data-admin-match="${match}">
+      <div class="admin-gauge">
+        <span class="admin-dot" aria-hidden="true">💧</span>
+        <span class="admin-gauge-txt"><strong>${esc(g.name)}</strong><small>${esc(g.location||'Local não informado')}</small></span>
+      </div>
+      <div class="admin-rain"><strong>${fmt(total(g.id))} mm</strong><small>${count(g.id)} medição(ões)</small></div>
+      <div class="admin-date">${latest?esc(when(latest.at)):'Sem registro'}</div>
+      <div class="admin-actions">
+        <button class="button button-soft" data-gauge="${esc(g.id)}" type="button">Histórico</button>
+        <button class="button button-soft" data-admin-edit="${esc(g.id)}" type="button">Editar</button>
+        <button class="button button-danger" data-admin-delete="${esc(g.id)}" type="button">Excluir</button>
+      </div>
+    </div>`;
   }).join('');
-  app.innerHTML=`<section class="hero hero-home">
-    <div class="hero-info"><span class="hero-caption">Chuva acumulada</span><strong>${fmt(total())} <small>mm</small></strong></div>
-    <svg class="rain-cloud" viewBox="0 0 120 95" fill="none" aria-hidden="true">
-      <path d="M27 63a23 23 0 0 1 5-45 33 33 0 0 1 61 8 20 20 0 0 1 0 39H27Z" fill="#3F7B96" opacity=".64"/>
-      <path d="m43 70-7 16m28-18-8 18m28-16-7 16" stroke="#75C7DE" stroke-width="5" stroke-linecap="round"/>
-    </svg>
+  app.innerHTML=`<section class="admin-head">
+    <div><span class="admin-eyebrow">PAINEL DE GERENCIAMENTO</span><h2>Pluviômetros</h2>
+    <p>Cadastre os pluviômetros do campo e acompanhe todas as medições recebidas.</p></div>
+    <button class="button admin-add" data-action="newGauge" type="button">+ Novo pluviômetro</button>
    </section>
-   <div class="section gauge-heading"><h2>Pluviômetros</h2></div>
-   ${cards?`<div class="gauges gauge-list">${cards}</div>`:'<div class="empty empty-home">Nenhum pluviômetro cadastrado.<br>Toque em <strong>+</strong> para começar.</div>'}`;
+   <section class="admin-stats" aria-label="Resumo geral">
+    <div class="admin-stat"><span>Pluviômetros cadastrados</span><strong>${state.gauges.length}</strong></div>
+    <div class="admin-stat"><span>Medições registradas</span><strong>${state.readings.length}</strong></div>
+    <div class="admin-stat"><span>Chuva acumulada</span><strong>${fmt(total())} <small>mm</small></strong></div>
+   </section>
+   <section class="admin-list-head"><h3>Cadastro e histórico</h3>
+    <input id="adminSearch" type="search" placeholder="Pesquisar nome ou localização" aria-label="Pesquisar pluviômetros" value="${esc(adminQuery)}" autocomplete="off">
+   </section>
+   ${rows?`<div class="admin-table"><div class="admin-table-head"><span>PLUVIÔMETRO</span><span>CHUVA</span><span>ÚLTIMA MEDIÇÃO</span><span>AÇÕES</span></div>${rows}</div><div id="adminSearchEmpty" class="empty hidden">Nenhum pluviômetro corresponde à pesquisa.</div>`:'<div class="empty">Nenhum pluviômetro cadastrado. Clique em <strong>+ Novo pluviômetro</strong>.</div>'}`;
+  filterAdminRows();
 
  }else{
   const rs=state.readings.filter(r=>r.gaugeId===selected).sort((a,b)=>b.at.localeCompare(a.at));
@@ -240,6 +255,13 @@ $('app').addEventListener('click',async event=>{
  const b=event.target.closest('button');if(!b)return;
  try{
  if(b.dataset.gauge){if(isMobileMode())quickReading(b.dataset.gauge);else showGauge(b.dataset.gauge);return}
+ if(!isMobileMode()&&b.dataset.adminEdit){editGauge(b.dataset.adminEdit);return}
+ if(!isMobileMode()&&b.dataset.adminDelete){
+  if(confirm('Excluir este pluviômetro e suas medições nos dispositivos sincronizados?')){
+   await deleteGauge(b.dataset.adminDelete);await refresh();scheduleSync();
+  }
+  return
+ }
  if(b.dataset.edit){editReading(b.dataset.edit);return}
  if(b.dataset.delete){if(confirm('Excluir esta medição? Ela ficará excluída também nos outros dispositivos quando sincronizar.')){await deleteReading(b.dataset.delete);await refresh();scheduleSync()}return}
  switch(b.dataset.action){
@@ -250,6 +272,9 @@ $('app').addEventListener('click',async event=>{
   case 'deleteGauge':if(confirm('Excluir este pluviômetro e suas medições em todos os aparelhos após sincronizar?')){await deleteGauge(selected);showHome();await refresh();scheduleSync()}break;
  }
  }catch(e){toast(e.message)}
+});
+$('app').addEventListener('input',event=>{
+ if(event.target?.id==='adminSearch'){adminQuery=event.target.value;filterAdminRows()}
 });
 $('banner').addEventListener('click',event=>{if(event.target.id==='openConflict')openConflict()});
 $('closeDialog').onclick=$('cancelDialog').onclick=closeEditor;
