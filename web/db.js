@@ -54,8 +54,18 @@ export async function saveReading(data){return run(['gauges','readings','outbox'
  if(before&&before.gaugeId!==data.gaugeId)throw Error('Registro pertence a outro pluviometro');
  const mm=Math.round((Number(data.mm)+Number.EPSILON)*100)/100;
  if(!Number.isFinite(mm)||mm<0||mm>10000||data.notes.length>2000)throw Error('Medição invalida');
- const r={id,gaugeId:data.gaugeId,mm,at:before?.at||new Date().toISOString(),notes:data.notes.trim(),version:before?.version||0,deleted:false};
- await Promise.all([req(readings.put(r)),req(out.add(op(id,'reading','upsert',r.version+pending.length,{gauge_id:r.gaugeId,amount_mm:r.mm,observed_at:r.at,notes:r.notes})))]);
+ const latitude=data.latitude==null?(before?.latitude??null):Number(data.latitude);
+ const longitude=data.longitude==null?(before?.longitude??null):Number(data.longitude);
+ const accuracyM=data.accuracyM==null?(before?.accuracyM??null):Number(data.accuracyM);
+ if((latitude===null)!==(longitude===null)||
+   (latitude!==null&&(!Number.isFinite(latitude)||latitude<-90||latitude>90))||
+   (longitude!==null&&(!Number.isFinite(longitude)||longitude<-180||longitude>180))||
+   (accuracyM!==null&&(!Number.isFinite(accuracyM)||accuracyM<0||accuracyM>999999)))throw Error('Coordenadas GPS invalidas');
+ const r={id,gaugeId:data.gaugeId,mm,at:before?.at||new Date().toISOString(),notes:data.notes.trim(),
+  latitude,longitude,accuracyM,version:before?.version||0,deleted:false};
+ await Promise.all([req(readings.put(r)),req(out.add(op(id,'reading','upsert',r.version+pending.length,
+  {gauge_id:r.gaugeId,amount_mm:r.mm,observed_at:r.at,notes:r.notes,
+   latitude:r.latitude,longitude:r.longitude,location_accuracy_m:r.accuracyM})))]);
  return id;
 })}
 export async function deleteReading(id){return run(['readings','outbox'],'readwrite',async tx=>{
@@ -91,7 +101,7 @@ export async function applyChanges(changes){return run(['gauges','readings','out
   const dest=store(tx,c.kind==='gauge'?'gauges':'readings'),before=await req(dest.get(c.entity_id));const p=c.data;
   if(!before||before.version<Number(p.version)){
    const val=c.kind==='gauge'?{id:c.entity_id,name:p.name,location:p.location||'',description:p.description||'',version:Number(p.version),deleted:p.deleted_at!==null}
-    :{id:c.entity_id,gaugeId:p.gauge_id,mm:Number(p.amount_mm),at:p.observed_at,notes:p.notes||'',version:Number(p.version),deleted:p.deleted_at!==null};
+    :{id:c.entity_id,gaugeId:p.gauge_id,mm:Number(p.amount_mm),at:p.observed_at,notes:p.notes||'',latitude:p.latitude==null?null:Number(p.latitude),longitude:p.longitude==null?null:Number(p.longitude),accuracyM:p.location_accuracy_m==null?null:Number(p.location_accuracy_m),version:Number(p.version),deleted:p.deleted_at!==null};
    await req(dest.put(val));
   }
   cursor=c.cursor;
@@ -108,11 +118,12 @@ export async function resolveConflict(seq,keepLocal){return run(['gauges','readi
  // A escolha do usuario descarta somente as operacoes pendentes deste registro.
  for(const p of all.filter(p=>p.entityId===x.entityId))await req(out.delete(p.seq));
  if(keepLocal){if(!local)throw Error('Registro local nao encontrado');await req(dest.put({...local,version}));
-  const data=x.kind==='gauge'?{name:local.name,location:local.location,description:local.description}:{gauge_id:local.gaugeId,amount_mm:local.mm,observed_at:local.at,notes:local.notes};
+  const data=x.kind==='gauge'?{name:local.name,location:local.location,description:local.description}:{gauge_id:local.gaugeId,amount_mm:local.mm,observed_at:local.at,notes:local.notes,
+    latitude:local.latitude??null,longitude:local.longitude??null,location_accuracy_m:local.accuracyM??null};
   await req(out.add(op(local.id,x.kind,local.deleted?'delete':'upsert',version,local.deleted?{}:data)));
  }else{
   const val=x.kind==='gauge'?{id:x.entityId,name:server.name,location:server.location||'',description:server.description||'',version,deleted}
-  :{id:x.entityId,gaugeId:server.gauge_id,mm:Number(server.amount_mm),at:server.observed_at,notes:server.notes||'',version,deleted};
+  :{id:x.entityId,gaugeId:server.gauge_id,mm:Number(server.amount_mm),at:server.observed_at,notes:server.notes||'',latitude:server.latitude==null?null:Number(server.latitude),longitude:server.longitude==null?null:Number(server.longitude),accuracyM:server.location_accuracy_m==null?null:Number(server.location_accuracy_m),version,deleted};
   await req(dest.put(val));
  }
 })}
@@ -133,8 +144,17 @@ export async function importBackup(data){
   for(const r of data.readings){if(!r||typeof r.id!=='string'||typeof r.gaugeId!=='string'||r.deleted)continue;
    if(!(await req(readings.get(r.id)))){const parent=await req(gauges.get(r.gaugeId));if(!parent||parent.deleted)continue;
     const mm=Number(r.mm);if(!Number.isFinite(mm)||mm<0||mm>10000)continue;
-    const clean={id:r.id,gaugeId:r.gaugeId,mm:Math.round(mm*100)/100,at:String(r.at||new Date().toISOString()),notes:String(r.notes||'').slice(0,2000),version:0,deleted:false};
-    await req(readings.put(clean));await req(out.add(op(clean.id,'reading','upsert',0,{gauge_id:clean.gaugeId,amount_mm:clean.mm,observed_at:clean.at,notes:clean.notes})));count++}
+    const validCoords=r.latitude!=null&&r.longitude!=null&&
+      Number.isFinite(Number(r.latitude))&&Math.abs(Number(r.latitude))<=90&&
+      Number.isFinite(Number(r.longitude))&&Math.abs(Number(r.longitude))<=180;
+    const clean={id:r.id,gaugeId:r.gaugeId,mm:Math.round(mm*100)/100,at:String(r.at||new Date().toISOString()),
+      notes:String(r.notes||'').slice(0,2000),
+      latitude:validCoords?Number(r.latitude):null,longitude:validCoords?Number(r.longitude):null,
+      accuracyM:validCoords&&r.accuracyM!=null&&Number.isFinite(Number(r.accuracyM))&&Number(r.accuracyM)>=0?Number(r.accuracyM):null,
+      version:0,deleted:false};
+    await req(readings.put(clean));await req(out.add(op(clean.id,'reading','upsert',0,
+      {gauge_id:clean.gaugeId,amount_mm:clean.mm,observed_at:clean.at,notes:clean.notes,
+       latitude:clean.latitude,longitude:clean.longitude,location_accuracy_m:clean.accuracyM})));count++}
   }
   return count;
  });
