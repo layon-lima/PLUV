@@ -2,7 +2,7 @@
 // O registro offline de chuva nao depende dos servidores do mapa.
 const CDN = 'https://unpkg.com/leaflet@1.9.4/dist/';
 const JS_HASH = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
-const CSS_HASH = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyo1ZRw/7u6oH6U=';
+const CSS_HASH = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
 let loader;
 let activeMap = null;
 let requestSeq = 0;
