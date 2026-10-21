@@ -181,3 +181,42 @@
 /* Icone oficial identico em todas as superficies PLUV */
 .logo{overflow:hidden;background:transparent}
 .logo img{display:block;width:100%;height:100%;object-fit:cover;border-radius:12px}
+
+
+/* PLUV mobile / APK: somente lista e registro rapido de chuva */
+.pluv-mobile-mode .layout{padding-bottom:36px}
+.pluv-mobile-mode .footer{display:none}
+.pluv-mobile-mode .fab-add{display:none!important}
+.quick-home{padding:12px 0 22px}
+.quick-heading{margin:7px 0 18px}
+.quick-heading h2{margin:0;color:#153c53;font-size:21px;letter-spacing:-.4px}
+.quick-heading p{margin:5px 0 0;color:#708894;font-size:12px;line-height:1.5}
+.quick-gauges{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:11px}
+.quick-gauge-card{
+ display:flex;align-items:center;gap:13px;text-align:left;width:100%;
+ border:1px solid #dce7eb;background:#fff;color:#173042;
+ border-radius:16px;padding:13px 15px;min-height:100px;
+ box-shadow:0 4px 15px #153c5309;transition:background .13s ease,transform .13s ease;
+}
+.quick-gauge-card:active{background:#f0f9fa;transform:scale(.995)}
+.quick-gauge-card:focus-visible{outline:3px solid #60b5c9;outline-offset:2px}
+.quick-gauge-art{width:68px;height:68px;flex:0 0 68px;display:block;border-radius:50%;overflow:hidden;background:#e4f1f6}
+.quick-gauge-art img{display:block;width:100%;height:100%;object-fit:cover}
+.quick-gauge-info{display:flex;flex:1;flex-direction:column;justify-content:center;gap:5px;min-width:0}
+.quick-gauge-info strong{color:#183b4d;font-weight:750;font-size:16px;line-height:1.25;overflow-wrap:anywhere}
+.quick-gauge-info>span{font-size:12px;color:#6a8492;line-height:1.35;overflow-wrap:anywhere}
+.quick-gauge-plus{border-radius:50%;width:32px;height:32px;flex:0 0 32px;display:grid;place-items:center;color:#0c7f97;background:#e7f4f7;font-size:25px;font-weight:350;line-height:1}
+.quick-empty{padding:30px 18px;font-size:13px;line-height:1.6}
+.quick-mm-field label{font-size:14px}
+.quick-mm-field input{min-height:60px;font-size:28px;font-weight:750;text-align:center;font-variant-numeric:tabular-nums}
+.pluv-mobile-mode #dialog .modal-actions .button:not(.button-soft){min-height:45px;min-width:122px;font-size:15px}
+@media(max-width:450px){
+ .quick-home{padding-top:4px}
+ .quick-heading{margin:8px 0 16px}
+ .quick-gauges{gap:10px;grid-template-columns:1fr}
+ .quick-gauge-card{min-height:92px;padding:11px 13px;gap:12px}
+ .quick-gauge-art{width:63px;height:63px;flex-basis:63px}
+ .quick-gauge-info strong{font-size:15px}
+ .quick-gauge-info>span{font-size:11px}
+}
+@media(prefers-reduced-motion:reduce){.quick-gauge-card{transition:none}}
