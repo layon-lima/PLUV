@@ -335,3 +335,25 @@ html:not(.pluv-mobile-mode) .layout{max-width:1400px;padding-left:28px;padding-r
  .report-block h3{break-after:avoid}
  .report-table tr{break-inside:avoid}
 }
+
+
+/* GPS opcional capturado pelos celulares: coordenadas no painel desktop */
+html:not(.pluv-mobile-mode) .admin-table-head,
+html:not(.pluv-mobile-mode) .admin-row{
+ grid-template-columns:minmax(175px,2fr) minmax(100px,.85fr) minmax(140px,1.1fr) minmax(275px,2.2fr) minmax(155px,1.3fr);
+ column-gap:14px;
+}
+.admin-gps{display:flex;flex-direction:column;align-items:flex-start;gap:5px;min-width:0}
+.admin-gps-value{font-size:12px;line-height:1.4;color:#405e70;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.admin-map-link,.detail-gps a{color:#0c7892;font-size:12px;font-weight:750;text-decoration:none}
+.admin-map-link:hover,.detail-gps a:hover{text-decoration:underline}
+.admin-map-link:focus-visible,.detail-gps a:focus-visible{outline:3px solid #60b5c9;outline-offset:2px}
+.detail-gps{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px;padding-top:11px;border-top:1px solid #ffffff28;font-size:12px;color:#d2e9ef}
+.detail-gps a{color:#9bdff3;text-decoration:underline}
+@media(max-width:1050px){
+ html:not(.pluv-mobile-mode) .admin-table-head{display:none}
+ html:not(.pluv-mobile-mode) .admin-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr);row-gap:10px}
+ html:not(.pluv-mobile-mode) .admin-row .admin-gauge,
+ html:not(.pluv-mobile-mode) .admin-row .admin-actions{grid-column:1/-1}
+ html:not(.pluv-mobile-mode) .admin-row .admin-gps{grid-column:1/-1;flex-direction:row;align-items:center;gap:14px}
+}
