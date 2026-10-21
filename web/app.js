@@ -194,7 +194,7 @@ function render(){
  const app=$('app');const g=state.gauges.find(x=>x.id===selected);
  if(isMobileMode()){
   selected=null;
-  $('desktopNav').hidden=true;
+  if($('desktopNav'))$('desktopNav').hidden=true;
   document.documentElement.classList.add('pluv-mobile-mode');
   const cards=[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(g=>{
    const variants=['campo','serra','lago','pasto'];
@@ -217,8 +217,8 @@ function render(){
   return;
  }
  document.documentElement.classList.remove('pluv-mobile-mode');
- $('desktopNav').hidden=false;
- for(const btn of $('desktopNav').querySelectorAll('[data-admin-section]')){
+ if($('desktopNav'))$('desktopNav').hidden=false;
+ for(const btn of ($('desktopNav')?.querySelectorAll('[data-admin-section]')||[])){
   btn.classList.toggle('is-active',btn.dataset.adminSection===adminTab);
   btn.setAttribute('aria-current',btn.dataset.adminSection===adminTab?'page':'false');
  }
