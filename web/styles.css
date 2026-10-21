@@ -400,3 +400,7 @@ html:not(.pluv-mobile-mode) .admin-row{
 .quick-retry-gps{display:block;width:100%;min-height:41px;margin:7px 0 4px;font-size:12px}
 .quick-gps-warning{font-size:12px;line-height:1.6;color:#905b21;background:#fff6e8;
  border:1px solid #eddbb8;padding:12px 14px;border-radius:11px;margin:0 0 12px}
+
+/* Informacao persistente no PWA apos salvar com ou sem GPS. */
+.quick-gps-summary{margin:-5px 0 15px;padding:10px 13px;background:#f1f8fa;border:1px solid #c7dee5;border-radius:10px;color:#355e70;font-size:12px;line-height:1.55}
+.quick-retry-gps{display:block;width:100%;margin:8px 0 4px;font-size:13px;min-height:42px}
