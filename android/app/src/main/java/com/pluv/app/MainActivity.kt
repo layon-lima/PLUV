@@ -1,6 +1,8 @@
 package com.pluv.app
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.content.pm.PackageManager
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -8,6 +10,7 @@ import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.GeolocationPermissions
 import android.webkit.JavascriptInterface
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -20,6 +23,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import java.text.SimpleDateFormat
@@ -40,6 +44,23 @@ class MainActivity : ComponentActivity() {
     private lateinit var web: WebView
     private var importCallback: ValueCallback<Array<Uri>>? = null
     private var pendingBackup: ByteArray? = null
+    private var pendingLocationOrigin: String? = null
+    private var pendingLocationCallback: GeolocationPermissions.Callback? = null
+
+    // O GPS so e solicitado pelo formulario apos toque do usuario em um pluviometro.
+    // Depois da autorizacao, leituras posteriores podem ocorrer sem novo prompt.
+    private val requestLocation = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val origin = pendingLocationOrigin
+        val callback = pendingLocationCallback
+        pendingLocationOrigin = null
+        pendingLocationCallback = null
+        if (origin != null && callback != null) {
+            callback.invoke(origin, permissions.values.any { it }, false)
+        }
+    }
+
 
     private val importDocument = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -82,6 +103,7 @@ class MainActivity : ComponentActivity() {
             javaScriptEnabled = true
             domStorageEnabled = true
             databaseEnabled = true
+            setGeolocationEnabled(true)
             cacheMode = WebSettings.LOAD_DEFAULT
             allowFileAccess = false
             allowContentAccess = false
@@ -109,6 +131,43 @@ class MainActivity : ComponentActivity() {
             }
         }
         web.webChromeClient = object : WebChromeClient() {
+            override fun onGeolocationPermissionsShowPrompt(
+                origin: String?,
+                callback: GeolocationPermissions.Callback?
+            ) {
+                if (origin == null || callback == null) return
+                val url = Uri.parse(origin)
+                // GPS apenas para o PLUV oficial, nunca para sites externos.
+                if (url.scheme != "https" || url.host != HOST) {
+                    callback.invoke(origin, false, false)
+                    return
+                }
+                val fine = ContextCompat.checkSelfPermission(
+                    this@MainActivity, Manifest.permission.ACCESS_FINE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+                val coarse = ContextCompat.checkSelfPermission(
+                    this@MainActivity, Manifest.permission.ACCESS_COARSE_LOCATION
+                ) == PackageManager.PERMISSION_GRANTED
+                if (fine || coarse) {
+                    callback.invoke(origin, true, false)
+                } else {
+                    pendingLocationOrigin?.let { previous ->
+                        pendingLocationCallback?.invoke(previous, false, false)
+                    }
+                    pendingLocationOrigin = origin
+                    pendingLocationCallback = callback
+                    try {
+                        requestLocation.launch(arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        ))
+                    } catch (_: Exception) {
+                        callback.invoke(origin, false, false)
+                        pendingLocationOrigin = null
+                        pendingLocationCallback = null
+                    }
+                }
+            }
             override fun onShowFileChooser(
                 view: WebView?,
                 callback: ValueCallback<Array<Uri>>?,
@@ -178,6 +237,11 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        pendingLocationOrigin?.let { origin ->
+            pendingLocationCallback?.invoke(origin, false, false)
+        }
+        pendingLocationOrigin = null
+        pendingLocationCallback = null
         importCallback?.onReceiveValue(null)
         importCallback = null
         if (::web.isInitialized) {
