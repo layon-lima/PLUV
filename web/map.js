@@ -1,37 +1,45 @@
-// Mapa somente no desktop. OpenStreetMap/Leaflet sao carregados sob demanda.
-// O registro offline de chuva nao depende dos servidores do mapa.
-const CDN = 'https://unpkg.com/leaflet@1.9.4/dist/';
-const JS_HASH = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
-const CSS_HASH = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
-let loader;
-let activeMap = null;
-let requestSeq = 0;
+// PLUV Desktop: MapLibre GL + OpenFreeMap (mapas vetoriais sem chave).
+// O mapa so carrega no desktop e nao interfere no salvamento offline.
+const MAPLIBRE_CDN='https://cdn.jsdelivr.net/npm/maplibre-gl@6.15.0/dist/';
+const FREE_STYLE='https://tiles.openfreemap.org/styles/liberty';
+let mapLibraryPromise=null;
+let activeMap=null;
+let requestSeq=0;
 
-function ensureLeaflet(){
- if(window.L?.map)return Promise.resolve(window.L);
- if(loader)return loader;
- loader=new Promise((resolve,reject)=>{
-  if(!document.getElementById('leafletStyles')){
-   const css=document.createElement('link');
-   css.id='leafletStyles';css.rel='stylesheet';css.href=CDN+'leaflet.css';
-   css.integrity=CSS_HASH;css.crossOrigin='anonymous';
-   document.head.appendChild(css);
+function ensureMapLibre(){
+ if(mapLibraryPromise)return mapLibraryPromise;
+ mapLibraryPromise=(async()=>{
+  if(!document.getElementById('maplibreStyles')){
+   const sheet=document.createElement('link');
+   sheet.id='maplibreStyles';
+   sheet.rel='stylesheet';
+   sheet.href=MAPLIBRE_CDN+'maplibre-gl.css';
+   const cssReady=new Promise((resolve,reject)=>{
+    sheet.onload=()=>resolve();
+    sheet.onerror=()=>reject(Error('Falha ao carregar estilos do mapa'));
+    setTimeout(()=>reject(Error('A folha de estilos do mapa demorou a carregar')),15000);
+   });
+   document.head.appendChild(sheet);
+   // O JS e os estilos precisam estar prontos antes de exibir o mapa.
+   const [mod]=await Promise.all([
+    import(MAPLIBRE_CDN+'maplibre-gl.mjs'),
+    cssReady
+   ]);
+   return mod;
   }
-  const script=document.createElement('script');
-  script.src=CDN+'leaflet.js';script.integrity=JS_HASH;script.crossOrigin='anonymous';
-  script.async=true;
-  const timer=setTimeout(()=>reject(Error('Tempo esgotado ao carregar o mapa')),15000);
-  script.onload=()=>{clearTimeout(timer);window.L?.map?resolve(window.L):reject(Error('Mapa indisponivel'))};
-  script.onerror=()=>{clearTimeout(timer);reject(Error('Nao foi possivel carregar o mapa'))};
-  document.head.appendChild(script);
- }).catch(e=>{loader=null;throw e});
- return loader;
+  return await import(MAPLIBRE_CDN+'maplibre-gl.mjs');
+ })().catch(error=>{mapLibraryPromise=null;throw error});
+ return mapLibraryPromise;
 }
 
 export function disposeReadingsMap(){
  requestSeq++;
- if(activeMap){try{activeMap.remove()}catch{};activeMap=null}
+ if(activeMap){
+  try{activeMap.remove()}catch{}
+  activeMap=null;
+ }
 }
+
 function popupNode(points){
  const box=document.createElement('div');
  box.className='pluv-map-popup';
@@ -64,43 +72,63 @@ export async function mountReadingsMap(points){
  const status=document.getElementById('mapLoadStatus');
  const element=document.getElementById('pluvMap');
  if(!element||!points.length)return;
- if(status)status.textContent='Carregando o mapa…';
+ if(status)status.textContent='Carregando mapa…';
  try{
-  const L=await ensureLeaflet();
+  const lib=await ensureMapLibre();
   if(seq!==requestSeq||document.getElementById('pluvMap')!==element)return;
-  const map=L.map(element,{scrollWheelZoom:false});
+  const first=points[0];
+  const map=new lib.Map({
+   container:element,
+   style:FREE_STYLE,
+   center:[first.longitude,first.latitude],
+   zoom:points.length===1?16:11,
+   pitch:0,bearing:0,
+   attributionControl:true
+  });
   activeMap=map;
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
-   attribution:'&copy; OpenStreetMap contributors',
-   maxZoom:19
-  }).addTo(map);
+  map.addControl(new lib.NavigationControl({showCompass:false}), 'top-right');
+  map.scrollZoom.disable(); // A roda nao deve deslocar o mapa sem querer.
   const groups=new Map();
   for(const point of points){
    const key=point.latitude.toFixed(5)+','+point.longitude.toFixed(5);
    if(!groups.has(key))groups.set(key,[]);
    groups.get(key).push(point);
   }
-  const markers=[];
+  const bounds=new lib.LngLatBounds();
   for(const group of groups.values()){
-   const first=group[0];
-   const marker=L.circleMarker([first.latitude,first.longitude],{
-    radius:group.length===1?9:12,
-    weight:2,color:'#fff',fillColor:'#09859c',fillOpacity:0.95
-   }).addTo(map);
-   marker.bindPopup(popupNode(group),{maxWidth:350});
-   markers.push(marker);
+   const firstPoint=group[0];
+   const markerElement=document.createElement('div');
+   markerElement.className='pluv-map-marker';
+   markerElement.title=firstPoint.name+' · '+group.length+' medição(ões)';
+   markerElement.setAttribute('aria-label',firstPoint.name);
+   const marker=new lib.Marker({element:markerElement,anchor:'center'})
+    .setLngLat([firstPoint.longitude,firstPoint.latitude])
+    .setPopup(new lib.Popup({offset:16,maxWidth:'350px'}).setDOMContent(popupNode(group)))
+    .addTo(map);
+   bounds.extend(marker.getLngLat());
   }
-  if(markers.length===1)map.setView(markers[0].getLatLng(),16);
-  else map.fitBounds(L.featureGroup(markers).getBounds(),{padding:[38,38],maxZoom:16});
-  map.invalidateSize();
-  if(status)status.textContent=groups.size+' ponto(s) de registro no mapa';
- }catch(e){
+  if(groups.size>1)map.fitBounds(bounds,{padding:48,maxZoom:16,duration:0});
+  const loaded=()=>{if(seq===requestSeq&&status)status.textContent=groups.size+' ponto(s) de registro no mapa · OpenFreeMap'};
+  map.on('load',loaded);
+  map.on('error',event=>{
+   if(seq!==requestSeq)return;
+   // Falhas de conexao do estilo ou tiles sao exibidas sem perder coordenadas.
+   const problem=String(event.error?.message||'').toLowerCase();
+   if(problem.includes('403')||problem.includes('401')||problem.includes('failed to fetch')||problem.includes('not found')){
+    if(status)status.textContent='O provedor do mapa não respondeu. As coordenadas permanecem listadas abaixo.';
+   }
+  });
+  setTimeout(()=>{
+   if(seq===requestSeq&&status&&status.textContent==='Carregando mapa…')
+    status.textContent='Aguardando o mapa carregar. Caso não apareça, use os links de coordenadas abaixo.';
+  },14000);
+ }catch(error){
   if(seq!==requestSeq)return;
-  if(status)status.textContent='O mapa não carregou. Verifique a internet; as coordenadas continuam listadas abaixo.';
+  if(status)status.textContent='O mapa não carregou. Verifique a internet ou use os links de coordenadas abaixo.';
   if(element)element.classList.add('pluv-map-error');
+  console.warn('PLUV mapa:',error);
  }
 }
-
 
 // Gerenciador desktop do mapa. Apenas medições com latitude e longitude reais.
 const safe=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -156,6 +184,6 @@ export function mapScreenHtml(gauges,readings,filterId=''){
    </table></div>
    ${points.length>200?`<p class="map-status">A tabela mostra os 200 registros mais recentes. O mapa inclui os ${points.length} registros.</p>`:''}
   </section>
-  <p class="map-notice">Mapa © OpenStreetMap. Os pontos representam a posição do celular na hora da medição, não necessariamente a localização fixa do pluviômetro. O mapa requer internet, mas registrar chuva não.</p>
+  <p class="map-notice">Base cartográfica: OpenFreeMap / dados OpenStreetMap. Os pontos representam a posição do celular na hora da medição, não necessariamente a localização fixa do pluviômetro. O mapa requer internet, mas registrar chuva não.</p>
  </section>`;
 }
