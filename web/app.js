@@ -211,6 +211,7 @@ function render(){
     </button>`;
   }).join('');
   app.innerHTML=`<section class="quick-home">
+     ${lastMobileGpsMessage.includes('sem GPS')?`<p class="quick-gps-warning" role="status">${esc(lastMobileGpsMessage)}<br>Verifique em Informações do site → Permissões → Localização.</p>`:''}
      <div class="quick-heading"><h2>Pluviômetros</h2><p>Toque em um pluviômetro para registrar a chuva.</p></div>
      ${cards?`<div class="quick-gauges">${cards}</div>`:'<div class="empty quick-empty">Nenhum pluviômetro cadastrado.<br>Cadastre os pluviômetros na versão para computador e sincronize este aparelho.</div>'}
    </section>`;
@@ -377,26 +378,57 @@ function quickReading(gaugeId){
  if(!gauge){toast('Pluviômetro não encontrado. Sincronize novamente.');return}
  lastMobileGpsMessage='';
  let gpsStatusMessage='Obtendo localização do celular…';
- const gpsPromise=captureReadingGps(message=>{
-  gpsStatusMessage=message;
-  const el=$('quickGpsStatus');if(el)el.textContent=message;
- });
+ let gpsPromise=Promise.resolve(null);
+ let gpsCaptured=null;
+ let attempt=0;
+ function capture(){
+  const current=++attempt;
+  const retry=$('quickRetryGps');
+  if(retry)retry.disabled=true;
+  gpsPromise=captureReadingGps(message=>{
+   if(attempt!==current)return;
+   gpsStatusMessage=message;
+   const el=$('quickGpsStatus');
+   if(el)el.textContent=message;
+  }).then(result=>{
+   if(attempt===current){
+    if(result)gpsCaptured=result;
+    const retry=$('quickRetryGps');
+    if(retry)retry.disabled=false;
+    if(gpsCaptured&& !result){
+     const el=$('quickGpsStatus');
+     if(el)el.textContent='GPS obtido anteriormente: '+gpsCaptured.latitude.toFixed(6)+', '+gpsCaptured.longitude.toFixed(6)+'.';
+    }
+   }
+   return gpsCaptured;
+  });
+  return gpsPromise;
+ }
+ // Pedido acontece dentro do toque no card, como exigem os navegadores.
+ capture();
  editor('Registrar chuva — '+gauge.name,
   '<div class="field quick-mm-field"><label for="mm">Chuva medida (mm)</label>'+
   '<input id="mm" name="mm" type="number" inputmode="decimal" min="0" max="10000" step="0.01" placeholder="Ex.: 12,5" required autofocus></div>'+
-  '<p class="small muted">Data e hora automáticas. GPS é solicitado ao registrar chuva, com autorização do celular.</p>'+
-  '<p class="quick-gps-status" id="quickGpsStatus" role="status">Obtendo localização do celular…</p>',
+  '<p class="small muted">Data e hora automáticas. O PLUV solicita localização ao registrar chuva; permita o GPS quando o navegador pedir.</p>'+
+  '<p class="quick-gps-status" id="quickGpsStatus" role="status">Obtendo localização do celular…</p>'+
+  '<button id="quickRetryGps" class="button button-soft quick-retry-gps" type="button">⌖ Tentar GPS novamente</button>',
   async data=>{
    const raw=String(data.get('mm')??'').trim().replace(',','.');
    if(!raw||!Number.isFinite(Number(raw))||Number(raw)<0||Number(raw)>10000)throw Error('Informe a quantidade de chuva em mm.');
    const pending=$('quickGpsStatus');
-   if(pending)pending.textContent='Verificando GPS antes de salvar a chuva…';
+   if(pending)pending.textContent='Concluindo captura do GPS antes de salvar…';
    const gps=await gpsPromise;
    await saveReading({gaugeId,mm:Number(raw),notes:'',...(gps||{})});
-   lastMobileGpsMessage=gps?'Chuva registrada com GPS ✓':'Chuva registrada sem GPS. Confira a permissão de localização.';
+   lastMobileGpsMessage=gps?'Chuva registrada com GPS ✓':'Chuva registrada sem GPS. Ative a permissão de Localização para o PLUV no navegador.';
   }
  );
  if($('quickGpsStatus'))$('quickGpsStatus').textContent=gpsStatusMessage;
+ if($('quickRetryGps')){
+  $('quickRetryGps').disabled=true;
+  $('quickRetryGps').onclick=()=>capture();
+  // A primeira captura foi iniciada antes do campo existir;
+  // quando ela terminar, a funcao capture() libera o botao.
+ }
  quickReadingHistory=true;
  history.pushState({pluvPage:'quickReading'},'',location.pathname+location.search+'#registrar');
 }
