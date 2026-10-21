@@ -1,15 +1,38 @@
-const VERSION='pluv-pwa-v8';
+// PLUV - o servidor tem prioridade quando ha internet; o cache preserva o uso offline.
+const VERSION='pluv-pwa-v9';
 const FILES=['/','/index.html','/styles.css','/app.js','/db.js','/manifest.webmanifest','/icons/icon-192.png','/icons/icon-512.png','/icons/pluv.svg','/icons/pluviometro-campo.svg','/icons/pluviometro-serra.svg','/icons/pluviometro-lago.svg','/icons/pluviometro-pasto.svg'];
-self.addEventListener('install',event=>{event.waitUntil(caches.open(VERSION).then(cache=>cache.addAll(FILES)));self.skipWaiting()});
-self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==VERSION).map(k=>caches.delete(k)))));self.clients.claim()});
+const isApi=path=>path.startsWith('/sync/')||path.startsWith('/auth/')||path==='/health';
+self.addEventListener('install',event=>{
+ event.waitUntil(caches.open(VERSION).then(cache=>cache.addAll(FILES.map(path=>new Request(path,{cache:'reload'})))));
+ self.skipWaiting();
+});
+self.addEventListener('activate',event=>{
+ event.waitUntil((async()=>{
+  const keys=await caches.keys();
+  await Promise.all(keys.filter(key=>key.startsWith('pluv-pwa-')&&key!==VERSION).map(key=>caches.delete(key)));
+  await self.clients.claim();
+ })());
+});
 self.addEventListener('fetch',event=>{
  const request=event.request;
  if(request.method!=='GET'||new URL(request.url).origin!==self.location.origin)return;
  const url=new URL(request.url);
- if(url.pathname.startsWith('/sync/')||url.pathname.startsWith('/auth/')||url.pathname==='/health')return;
- if(request.mode==='navigate'){
-   event.respondWith(fetch(request).then(response=>{if(response.ok){const copy=response.clone();caches.open(VERSION).then(c=>c.put('/index.html',copy))}return response}).catch(()=>caches.match('/index.html')));return;
- }
- if(FILES.includes(url.pathname)) event.respondWith(caches.match(request).then(hit=>hit||fetch(request)));
+ if(isApi(url.pathname))return;
+ const isPage=request.mode==='navigate';
+ if(!isPage&&!FILES.includes(url.pathname))return;
+ event.respondWith((async()=>{
+  const cache=await caches.open(VERSION);
+  try{
+   const response=await fetch(request,{cache:'no-store'});
+   if(response.ok){
+    const cacheKey=isPage?'/index.html':url.pathname;
+    event.waitUntil(cache.put(cacheKey,response.clone()).catch(()=>{}));
+   }
+   return response;
+  }catch(error){
+   const fallback=await cache.match(isPage?'/index.html':url.pathname);
+   return fallback||new Response('PLUV indisponivel sem internet',{status:503,headers:{'Content-Type':'text/plain; charset=utf-8'}});
+  }
+ })());
 });
 self.addEventListener('message',event=>{if(event.data==='SKIP_WAITING')self.skipWaiting()});
