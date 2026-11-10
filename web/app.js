@@ -8,6 +8,38 @@ const fmt=v=>Number(v).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFr
 const when=v=>{try{return new Date(v).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}catch{return v}};
 const total=id=>state.readings.filter(r=>!id||r.gaugeId===id).reduce((sum,r)=>sum+r.mm,0);
 const count=id=>state.readings.filter(r=>r.gaugeId===id).length;
+
+// Resumo simples da home mobile, sem alterar cadastros, leituras ou sincronizacao.
+// Datas do mes seguem a hora local do aparelho, como no relatorio desktop.
+const RAIN_EVENT_GAP_MS=3*60*60*1000;
+function mobileRainTotals(readings,now=new Date()){
+ const currentMonth=now.getFullYear();
+ const monthIndex=now.getMonth();
+ const valid=[];
+ const monthly=new Map();
+ let all=0;
+ for(const r of readings){
+  const value=Number(r.mm);
+  const at=new Date(r.at);
+  if(!Number.isFinite(value)||!Number.isFinite(at.getTime()))continue;
+  all+=value;
+  if(at.getFullYear()===currentMonth&&at.getMonth()===monthIndex)
+   monthly.set(r.gaugeId,(monthly.get(r.gaugeId)||0)+value);
+  valid.push({time:at.getTime(),mm:value});
+ }
+ // Ultima chuva: grupo mais recente; cada intervalo entre medicoes
+ // consecutivas de ate 3 horas faz parte da mesma rodada.
+ valid.sort((a,b)=>b.time-a.time);
+ let latest=0;
+ let previousTime=null;
+ for(const reading of valid){
+  if(previousTime!==null&&previousTime-reading.time>RAIN_EVENT_GAP_MS)break;
+  latest+=reading.mm;
+  previousTime=reading.time;
+ }
+ return {all,latest,monthly};
+}
+
 // O Android compilado e navegadores de celular mostram somente o registro rapido.
 // No desktop permanecem cadastro, resumo, historico e administracao.
 const isMobileMode=()=>Boolean(window.PLUV_ANDROID)
@@ -196,21 +228,29 @@ function render(){
   selected=null;
   if($('desktopNav'))$('desktopNav').hidden=true;
   document.documentElement.classList.add('pluv-mobile-mode');
-  const cards=[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(g=>{
-   const variants=['campo','serra','lago','pasto'];
-   let hash=0;for(const ch of g.id)hash=(hash*31+ch.charCodeAt(0))>>>0;
-   const illustration=variants[hash%variants.length];
-   return `<button class="quick-gauge-card" type="button" data-gauge="${esc(g.id)}" aria-label="Registrar chuva em ${esc(g.name)}">
-     <span class="quick-gauge-art"><img src="/icons/pluviometro-${illustration}.svg" alt="" width="74" height="74"></span>
-     <span class="quick-gauge-info"><strong>${esc(g.name)}</strong>
-       ${g.location?`<span>${esc(g.location)}</span>`:''}
-     </span>
-     <span class="quick-gauge-plus" aria-hidden="true">+</span>
-    </button>`;
-  }).join('');
+  const rain=mobileRainTotals(state.readings);
+  const cards=[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(g=>`<button
+    class="quick-gauge-card" type="button" data-gauge="${esc(g.id)}"
+    aria-label="${esc(g.name)}, ${fmt(rain.monthly.get(g.id)||0)} milímetros neste mês. Registrar chuva">
+      <span class="quick-gauge-info"><strong>${esc(g.name)}</strong>
+       <span>Este mês: <b>${fmt(rain.monthly.get(g.id)||0)} mm</b></span>
+      </span>
+    </button>`).join('');
   app.innerHTML=`<section class="quick-home">
-     <div class="quick-heading"><h2>Pluviômetros</h2><p>Toque em um pluviômetro para registrar a chuva.</p></div>
-     ${cards?`<div class="quick-gauges">${cards}</div>`:'<div class="empty quick-empty">Nenhum pluviômetro cadastrado.<br>Cadastre os pluviômetros na versão para computador e sincronize este aparelho.</div>'}
+     <div class="mobile-rain-overview" aria-label="Resumo das chuvas">
+       <div class="mobile-rain-stat">
+         <span class="mobile-rain-title">ACUMULADO GERAL</span>
+         <strong>${fmt(rain.all)} <small>mm</small></strong>
+         <span class="mobile-rain-note">Todo o histórico</span>
+       </div>
+       <div class="mobile-rain-stat">
+         <span class="mobile-rain-title">ÚLTIMA CHUVA</span>
+         <strong>${fmt(rain.latest)} <small>mm</small></strong>
+         <span class="mobile-rain-note">Coletas agrupadas em 3h</span>
+       </div>
+     </div>
+     ${cards?`<div class="quick-gauges">${cards}</div>`:
+      '<div class="empty quick-empty">Nenhum pluviômetro cadastrado. Cadastre os pluviômetros no desktop e sincronize este aparelho.</div>'}
    </section>`;
   $('fabNewGauge').hidden=true;
   status();
