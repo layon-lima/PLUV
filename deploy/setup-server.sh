@@ -60,7 +60,11 @@ printf 'DATABASE_URL=postgresql://pluv_api:%s@pluviometros-db-1:5432/pluv_db\n' 
 chmod 600 "$ENV_FILE"
 unset DB_PASS
 
+# Toda atualizacao da main recebe um identificador novo automaticamente.
+# Nao precisa editar numero de versao a cada alteracao no app.
+export PLUV_BUILD_ID="$(git -C "$SRC" rev-parse --verify HEAD 2>/dev/null || echo dev)"
 echo "Preparando API (somente em 127.0.0.1:8001)..."
+echo "Versao do deploy: ${PLUV_BUILD_ID:0:12}"
 docker compose -f "$COMPOSE" up -d --build
 echo "Aguardando a API inicializar (ate 120 segundos)..."
 READY=0
