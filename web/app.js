@@ -1,5 +1,8 @@
 import {API,uid,snapshot,saveGauge,saveReading,deleteGauge,deleteReading,nextPending,acceptOperation,rejectOperation,applyChanges,resolveConflict,backup,importBackup} from './db.js';
 const $=id=>document.getElementById(id);let state={gauges:[],readings:[],outbox:[],cursor:0};let selected=null;let syncing=false;let lastError='';let syncTimer=null;let conflictSeq=null;let installPrompt=null;let quickReadingHistory=false;let adminQuery='';let adminTab='gauges';
+const SERVED_BUILD=document.querySelector('meta[name="pluv-build"]')?.getAttribute('content')||'';
+let latestBuild='',checkingBuild=false,lastBuildCheck=0,savingForm=false;
+
 const asDay=date=>[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
 let reportStart=asDay(new Date(new Date().getFullYear(),new Date().getMonth(),1));
 let reportEnd=asDay(new Date());let reportGauge='';
@@ -108,6 +111,53 @@ window.PLUV_NATIVE_BACK=()=>{
  if(selected||gaugeFromUrl()){showHome();return true}
  return false;
 };
+
+// Atualizacao invisivel para o usuario. A API revela o SHA do codigo efetivamente
+// implantado, inclusive quando o Service Worker nao mudou entre deploys.
+// IndexedDB nunca e apagado: se houver formulario aberto ou sincronizacao,
+// o reload aguarda ate ser seguro.
+function safeForAutoReload(){
+ return !document.hidden && navigator.onLine && !syncing && !savingForm &&
+  !document.querySelector('dialog[open]');
+}
+function applyAvailableUpdate(){
+ if(!latestBuild||latestBuild===SERVED_BUILD||!safeForAutoReload())return false;
+ // Evita loop de reload se um proxy entregar HTML antigo por alguns segundos.
+ const key='pluv-last-auto-reload';
+ try{
+  const previous=JSON.parse(sessionStorage.getItem(key)||'null');
+  if(previous?.build===latestBuild&&Date.now()-previous.at<120000)return false;
+  sessionStorage.setItem(key,JSON.stringify({build:latestBuild,at:Date.now()}));
+ }catch(e){/* Sem sessionStorage o reload ainda funciona. */}
+ location.reload();
+ return true;
+}
+async function checkForAppUpdate(force=false){
+ if(checkingBuild||!navigator.onLine||document.hidden)return;
+ const now=Date.now();
+ if(!force&&now-lastBuildCheck<30000)return;
+ lastBuildCheck=now;checkingBuild=true;
+ try{
+  const response=await fetch('/app-version',{cache:'no-store'});
+  if(!response.ok)return;
+  const payload=await response.json();
+  const build=String(payload?.build||'');
+  if(!/^[a-f0-9]{40}$/i.test(build))return;
+  if(build===SERVED_BUILD){latestBuild='';return}
+  latestBuild=build;
+  if('serviceWorker'in navigator){
+   try{
+    const registration=await navigator.serviceWorker.getRegistration();
+    if(registration){
+     await registration.update();
+     registration.waiting?.postMessage('SKIP_WAITING');
+    }
+   }catch(e){/* Sem SW, o HTML ainda sera atualizado pela rede. */}
+  }
+  applyAvailableUpdate();
+ }catch(e){/* Offline/servidor indisponivel: continua com a versao local. */}
+ finally{checkingBuild=false}
+}
 
 function toast(text){const t=$('toast');t.textContent=text;t.classList.remove('hidden');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.add('hidden'),3600)}
 function setBanner(html,isConflict=false){$('banner').innerHTML=html;$('banner').classList.remove('hidden');$('banner').classList.toggle('conflict',isConflict)}
@@ -338,7 +388,7 @@ function render(){
 }
 async function refresh(){state=await snapshot();render()}
 function editor(title,fields,submit){$('modalTitle').textContent=title;$('fields').innerHTML=fields;$('formError').classList.add('hidden');$('editorForm').onsubmit=async event=>{
- event.preventDefault();const save=$('saveDialog');save.disabled=true;try{await submit(new FormData(event.target));closeEditor();await refresh();scheduleSync();toast(isMobileMode()?'Chuva registrada neste dispositivo':'Salvo neste dispositivo')}catch(e){$('formError').textContent=e.message;$('formError').classList.remove('hidden')}finally{save.disabled=false}
+ event.preventDefault();if(savingForm)return;savingForm=true;const save=$('saveDialog');save.disabled=true;try{await submit(new FormData(event.target));closeEditor();await refresh();scheduleSync();toast(isMobileMode()?'Chuva registrada neste dispositivo':'Salvo neste dispositivo')}catch(e){$('formError').textContent=e.message;$('formError').classList.remove('hidden')}finally{save.disabled=false;savingForm=false;applyAvailableUpdate()}
 };$('dialog').showModal()}
 function closeEditor(){
  if($('dialog').open)$('dialog').close();
@@ -457,7 +507,7 @@ async function sync(){if(syncing||!navigator.onLine)return;syncing=true;status()
     local.cursor=applied.cursor;
   }}
   lastError='';
- }catch(e){lastError=syncStatusFromError(e)}finally{syncing=false;await refresh()}
+ }catch(e){lastError=syncStatusFromError(e)}finally{syncing=false;await refresh();applyAvailableUpdate()}
 }
 function scheduleSync(){clearTimeout(syncTimer);syncTimer=setTimeout(sync,350)}
 async function openConflict(){const x=state.outbox.find(p=>p.conflict);if(!x)return;conflictSeq=x.seq;
@@ -527,26 +577,6 @@ $('dialog').addEventListener('cancel',event=>{
  if(quickReadingHistory){event.preventDefault();closeEditor()}
 });
 $('fabNewGauge').onclick=()=>editGauge();
-$('refreshFilesBtn').onclick=async()=>{
- const button=$('refreshFilesBtn');
- if(!navigator.onLine){toast('Conecte-se à internet para atualizar a interface.');return}
- button.disabled=true;
- try{
-  const health=await fetch('/health',{cache:'no-store'});
-  if(!health.ok)throw Error('Servidor indisponível');
-  // Remove APENAS arquivos temporarios do PWA; nunca toca no IndexedDB.
-  const names=await caches.keys();
-  await Promise.all(names.filter(name=>name.startsWith('pluv-pwa-')).map(name=>caches.delete(name)));
-  if('serviceWorker'in navigator){
-   const reg=await navigator.serviceWorker.getRegistration();
-   if(reg){
-    await reg.update();
-    reg.waiting?.postMessage('SKIP_WAITING');
-   }
-  }
-  location.reload();
- }catch(e){toast('Não foi possível atualizar. Tente novamente com internet.');button.disabled=false}
-};
 $('syncBtn').onclick=sync;
 $('optionsBtn').onclick=()=>$('optionsDialog').showModal();
 $('closeOptions').onclick=()=>$('optionsDialog').close();
@@ -570,7 +600,7 @@ $('exportBtn').onclick=async()=>{try{
 }catch(e){toast(e.message)}};
 $('importBtn').onclick=()=>$('importFile').click();
 $('importFile').onchange=async event=>{try{const file=event.target.files?.[0];if(!file)return;const data=JSON.parse(await file.text());if(!confirm('Importar registros ausentes deste backup? Os dados atuais serão preservados.'))return;const count=await importBackup(data);await refresh();scheduleSync();toast(`${count} registros importados`)}catch(e){toast(e.message)}finally{event.target.value=''}};
-window.addEventListener('online',()=>{lastError='';status();sync()});
+window.addEventListener('online',()=>{lastError='';status();sync();checkForAppUpdate(true)});
 window.addEventListener('offline',status);
 let previousMobileMode=isMobileMode();
 window.addEventListener('resize',()=>{
@@ -581,21 +611,32 @@ window.addEventListener('resize',()=>{
   render();
  }
 });
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
+document.addEventListener('visibilitychange',()=>{
+ if(!document.hidden){sync();checkForAppUpdate(true);applyAvailableUpdate()}
+});
+window.addEventListener('focus',()=>{if(!document.hidden){checkForAppUpdate(true);applyAvailableUpdate()}});
+for(const dialogId of ['dialog','optionsDialog','conflictDialog']){
+ $(dialogId).addEventListener('close',()=>setTimeout(applyAvailableUpdate,0));
+}
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('installBtn').hidden=false});
 $('installBtn').onclick=async()=>{if(installPrompt){installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$('installBtn').hidden=true}};
 async function init(){
  try{setupNavigation();await refresh();if('serviceWorker'in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1')){
   try{
-   const previous=navigator.serviceWorker.controller;
    navigator.serviceWorker.addEventListener('controllerchange',()=>{
-    // Apos ativar nova versao, carrega os arquivos atualizados sem apagar dados.
-    if(previous&&navigator.onLine&&!$('dialog').open&&!$('optionsDialog').open&&!$('conflictDialog').open)location.reload();
-   },{once:true});
+    // Nunca interrompe uma medicao ainda sendo preenchida.
+    checkForAppUpdate(true);
+   });
    const reg=await navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'});
    reg.update().catch(()=>{});
   }catch(e){console.warn('Cache offline indisponível:',e)}
- }sync();setInterval(()=>{if(!document.hidden)sync()},60000)}
+ }
+  sync();
+  checkForAppUpdate(true);
+  setInterval(()=>{
+   if(!document.hidden){sync();checkForAppUpdate();applyAvailableUpdate()}
+  },60000);
+}
  catch(e){$('app').innerHTML=`<div class="empty">Não foi possível abrir o banco local do navegador: ${esc(e.message)}. Verifique se o navegador permite armazenamento local e não está no modo anônimo.</div>`;lastError=e.message;status()}
 }
 init();
