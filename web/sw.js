@@ -1,7 +1,7 @@
 // PLUV - o servidor tem prioridade quando ha internet; o cache preserva o uso offline.
-const VERSION='pluv-pwa-v18';
+const VERSION='pluv-pwa-v19';
 const FILES=['/','/index.html','/styles.css','/app.js','/db.js','/manifest.webmanifest','/icons/icon-192.png','/icons/icon-512.png','/icons/pluv.svg','/icons/pluviometro-campo.svg','/icons/pluviometro-serra.svg','/icons/pluviometro-lago.svg','/icons/pluviometro-pasto.svg'];
-const isApi=path=>path.startsWith('/sync/')||path.startsWith('/auth/')||path==='/health';
+const isApi=path=>path.startsWith('/sync/')||path.startsWith('/auth/')||path==='/health'||path==='/app-version';
 self.addEventListener('install',event=>{
  event.waitUntil(caches.open(VERSION).then(cache=>cache.addAll(FILES.map(path=>new Request(path,{cache:'reload'})))));
  self.skipWaiting();
