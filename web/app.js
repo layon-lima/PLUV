@@ -232,9 +232,8 @@ function render(){
   const cards=[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(g=>`<button
     class="quick-gauge-card" type="button" data-gauge="${esc(g.id)}"
     aria-label="${esc(g.name)}, ${fmt(rain.monthly.get(g.id)||0)} milímetros neste mês. Registrar chuva">
-      <span class="quick-gauge-info"><strong>${esc(g.name)}</strong>
-       <span>Este mês: <b>${fmt(rain.monthly.get(g.id)||0)} mm</b></span>
-      </span>
+      <span class="quick-gauge-info"><strong class="quick-gauge-name">${esc(g.name)}</strong></span>
+      <span class="quick-gauge-amount"><strong>${fmt(rain.monthly.get(g.id)||0)}</strong><small>mm</small></span>
     </button>`).join('');
   app.innerHTML=`<section class="quick-home">
      <div class="mobile-rain-overview" aria-label="Resumo das chuvas">
@@ -249,6 +248,7 @@ function render(){
          <span class="mobile-rain-note">Coletas agrupadas em 3h</span>
        </div>
      </div>
+     <div class="quick-list-heading"><h2>PLUVIÔMETROS</h2><span>ACUMULADO MENSAL</span></div>
      ${cards?`<div class="quick-gauges">${cards}</div>`:
       '<div class="empty quick-empty">Nenhum pluviômetro cadastrado. Cadastre os pluviômetros no desktop e sincronize este aparelho.</div>'}
    </section>`;
