@@ -4,6 +4,8 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
+      args:
+        PLUV_BUILD_ID: ${PLUV_BUILD_ID:-dev}
     restart: unless-stopped
     env_file:
       - /opt/apps/pluviometros/config/api.env
