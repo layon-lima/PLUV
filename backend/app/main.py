@@ -66,6 +66,16 @@ class Operation(BaseModel):
 class PushRequest(BaseModel):
     operations: list[Operation] = Field(min_length=1, max_length=50)
 
+@app.get('/app-version')
+def app_version():
+    # SHA do commit realmente incorporado a imagem Docker em execucao.
+    # Nao guarda nenhum identificador do usuario nem consulta o banco.
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        {'build': os.environ.get('PLUV_BUILD_ID', 'dev')},
+        headers={'Cache-Control': 'no-store, max-age=0'}
+    )
+
 @app.get('/health')
 def health():
     with pool.connection() as conn:
