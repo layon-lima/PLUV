@@ -197,6 +197,15 @@
  color:#fff;background:linear-gradient(135deg,#07344d 4%,#075774 73%,#096b80 100%);
  box-shadow:0 5px 12px #0b384b29;
 }
+/* Tres gotas pequenas em marca d'agua, sem ocupar espaco dos numeros. */
+.mobile-rain-drops{
+ position:absolute;right:7px;top:9px;width:41px;height:28px;z-index:0;
+ pointer-events:none;opacity:.22;
+}
+.mobile-rain-drops svg{display:block;width:100%;height:100%;fill:#d9fff7}
+.mobile-rain-stat>.mobile-rain-title,
+.mobile-rain-stat>strong,
+.mobile-rain-stat>.mobile-rain-note{position:relative;z-index:1}
 .mobile-rain-stat:nth-child(2){
  border-color:#149c97;
  background:linear-gradient(125deg,#087878 5%,#0aa79c 76%,#079d9a 100%);
