@@ -12,35 +12,53 @@ const when=v=>{try{return new Date(v).toLocaleString('pt-BR',{dateStyle:'short',
 const total=id=>state.readings.filter(r=>!id||r.gaugeId===id).reduce((sum,r)=>sum+r.mm,0);
 const count=id=>state.readings.filter(r=>r.gaugeId===id).length;
 
-// Resumo simples da home mobile, sem alterar cadastros, leituras ou sincronizacao.
-// Datas do mes seguem a hora local do aparelho, como no relatorio desktop.
-const RAIN_EVENT_GAP_MS=3*60*60*1000;
-function mobileRainTotals(readings,now=new Date()){
- const currentMonth=now.getFullYear();
- const monthIndex=now.getMonth();
- const valid=[];
+// Indicadores da home: media de chuva medida HOJE por pluviometro
+// cadastrado em cada grupo. Um ponto sem coleta hoje equivale a 0 mm
+// na media; multiplas leituras do mesmo ponto somam antes da divisao.
+const NH_GAUGES=new Set([
+ 'LOTE 01 SEDE',
+ 'LOTE 01 X KPS',
+ 'LOTE 02 X EGIDIO',
+ 'LOTE 03 X SERADO',
+ 'LOTE 04 X PEDRAS',
+ 'LOTE 04 X SERADO',
+ 'LOTE 05 X 06',
+ 'LOTE 05 X 12 PEDRAS'
+]);
+const normalizeGaugeName=name=>String(name||'').normalize('NFD')
+ .replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
+function mobileRainDashboard(gauges,readings,now=new Date()){
+ const day=asDay(now);
+ const month=day.slice(0,7);
  const monthly=new Map();
- let all=0;
- for(const r of readings){
-  const value=Number(r.mm);
-  const at=new Date(r.at);
-  if(!Number.isFinite(value)||!Number.isFinite(at.getTime()))continue;
-  all+=value;
-  if(at.getFullYear()===currentMonth&&at.getMonth()===monthIndex)
-   monthly.set(r.gaugeId,(monthly.get(r.gaugeId)||0)+value);
-  valid.push({time:at.getTime(),mm:value});
+ const groupIds={nh:new Set(),giles:new Set()};
+ const byId=new Map();
+ for(const gauge of gauges){
+  const group=NH_GAUGES.has(normalizeGaugeName(gauge.name))?'nh':'giles';
+  byId.set(gauge.id,group);
+  groupIds[group].add(gauge.id);
  }
- // Ultima chuva: grupo mais recente; cada intervalo entre medicoes
- // consecutivas de ate 3 horas faz parte da mesma rodada.
- valid.sort((a,b)=>b.time-a.time);
- let latest=0;
- let previousTime=null;
- for(const reading of valid){
-  if(previousTime!==null&&previousTime-reading.time>RAIN_EVENT_GAP_MS)break;
-  latest+=reading.mm;
-  previousTime=reading.time;
+ const dailySums={nh:0,giles:0};
+ const dailyRecorded={nh:new Set(),giles:new Set()};
+ for(const reading of readings){
+  const mm=Number(reading.mm);
+  const at=new Date(reading.at);
+  const group=byId.get(reading.gaugeId);
+  if(!group||!Number.isFinite(mm)||Number.isNaN(at.getTime()))continue;
+  const readingDay=asDay(at);
+  if(readingDay.slice(0,7)===month)
+   monthly.set(reading.gaugeId,(monthly.get(reading.gaugeId)||0)+mm);
+  if(readingDay!==day)continue;
+  dailySums[group]+=mm;
+  dailyRecorded[group].add(reading.gaugeId);
  }
- return {all,latest,monthly};
+ const daily={};
+ for(const group of ['nh','giles']){
+  const count=groupIds[group].size;
+  daily[group]={mean:count?dailySums[group]/count:0,count,
+   measured:dailyRecorded[group].size};
+ }
+ return {monthly,daily};
 }
 
 // O Android compilado e navegadores de celular mostram somente o registro rapido.
@@ -278,7 +296,7 @@ function render(){
   selected=null;
   if($('desktopNav'))$('desktopNav').hidden=true;
   document.documentElement.classList.add('pluv-mobile-mode');
-  const rain=mobileRainTotals(state.readings);
+  const rain=mobileRainDashboard(state.gauges,state.readings);
   const cards=[...state.gauges].sort((a,b)=>a.name.localeCompare(b.name,'pt-BR')).map(g=>`<button
     class="quick-gauge-card" type="button" data-gauge="${esc(g.id)}"
     aria-label="${esc(g.name)}, ${fmt(rain.monthly.get(g.id)||0)} milímetros neste mês. Registrar chuva">
@@ -288,14 +306,14 @@ function render(){
   app.innerHTML=`<section class="quick-home">
      <div class="mobile-rain-overview" aria-label="Resumo das chuvas">
        <div class="mobile-rain-stat">
-         <span class="mobile-rain-title">ACUMULADO GERAL</span>
-         <strong>${fmt(rain.all)} <small>mm</small></strong>
-         <span class="mobile-rain-note">Todo o histórico</span>
+         <span class="mobile-rain-title">MÉDIA SEDE NH</span>
+         <strong>${fmt(rain.daily.nh.mean)} <small>mm</small></strong>
+         <span class="mobile-rain-note">Hoje · ${rain.daily.nh.measured}/${rain.daily.nh.count} coletados</span>
        </div>
        <div class="mobile-rain-stat">
-         <span class="mobile-rain-title">ÚLTIMA CHUVA</span>
-         <strong>${fmt(rain.latest)} <small>mm</small></strong>
-         <span class="mobile-rain-note">Coletas agrupadas em 3h</span>
+         <span class="mobile-rain-title">MÉDIA GILES</span>
+         <strong>${fmt(rain.daily.giles.mean)} <small>mm</small></strong>
+         <span class="mobile-rain-note">Hoje · ${rain.daily.giles.measured}/${rain.daily.giles.count} coletados</span>
        </div>
      </div>
      <div class="quick-list-heading"><h2>PLUVIÔMETROS</h2><span>ACUMULADO MENSAL</span></div>
