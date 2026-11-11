@@ -317,11 +317,25 @@ function render(){
   app.innerHTML=`<section class="quick-home">
      <div class="mobile-rain-overview" aria-label="Resumo das chuvas">
        <div class="mobile-rain-stat">
+         <span class="mobile-rain-drops" aria-hidden="true">
+           <svg viewBox="0 0 62 38" focusable="false">
+             <path d="M10 3C8 8 3 14 3 19a7 7 0 0 0 14 0c0-5-5-11-7-16Z"/>
+             <path d="M33 13c-2 4-6 9-6 13a6 6 0 0 0 12 0c0-4-4-9-6-13Z"/>
+             <path d="M52 2c-2 4-7 10-7 15a7 7 0 0 0 14 0c0-5-5-11-7-15Z"/>
+           </svg>
+         </span>
          <span class="mobile-rain-title">MÉDIA SEDE NOVO HORIZONTE</span>
          <strong>${fmt(rain.daily.nh.mean)} <small>mm</small></strong>
          <span class="mobile-rain-note">${lastCollectionLabel(rain.daily.nh.day)} · ${rain.daily.nh.measured}/${rain.daily.nh.count} coletados</span>
        </div>
        <div class="mobile-rain-stat">
+         <span class="mobile-rain-drops" aria-hidden="true">
+           <svg viewBox="0 0 62 38" focusable="false">
+             <path d="M10 3C8 8 3 14 3 19a7 7 0 0 0 14 0c0-5-5-11-7-16Z"/>
+             <path d="M33 13c-2 4-6 9-6 13a6 6 0 0 0 12 0c0-4-4-9-6-13Z"/>
+             <path d="M52 2c-2 4-7 10-7 15a7 7 0 0 0 14 0c0-5-5-11-7-15Z"/>
+           </svg>
+         </span>
          <span class="mobile-rain-title">MÉDIA GILES</span>
          <strong>${fmt(rain.daily.giles.mean)} <small>mm</small></strong>
          <span class="mobile-rain-note">${lastCollectionLabel(rain.daily.giles.day)} · ${rain.daily.giles.measured}/${rain.daily.giles.count} coletados</span>
