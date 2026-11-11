@@ -317,7 +317,7 @@ function render(){
   app.innerHTML=`<section class="quick-home">
      <div class="mobile-rain-overview" aria-label="Resumo das chuvas">
        <div class="mobile-rain-stat">
-         <span class="mobile-rain-title">MÉDIA SEDE NH</span>
+         <span class="mobile-rain-title">MÉDIA SEDE NOVO HORIZONTE</span>
          <strong>${fmt(rain.daily.nh.mean)} <small>mm</small></strong>
          <span class="mobile-rain-note">${lastCollectionLabel(rain.daily.nh.day)} · ${rain.daily.nh.measured}/${rain.daily.nh.count} coletados</span>
        </div>
