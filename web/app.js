@@ -12,9 +12,9 @@ const when=v=>{try{return new Date(v).toLocaleString('pt-BR',{dateStyle:'short',
 const total=id=>state.readings.filter(r=>!id||r.gaugeId===id).reduce((sum,r)=>sum+r.mm,0);
 const count=id=>state.readings.filter(r=>r.gaugeId===id).length;
 
-// Indicadores da home: media de chuva medida HOJE por pluviometro
-// cadastrado em cada grupo. Um ponto sem coleta hoje equivale a 0 mm
-// na media; multiplas leituras do mesmo ponto somam antes da divisao.
+// A media de cada grupo corresponde ao ultimo dia COM medicao naquele grupo.
+// Dias sem coleta nao zeram a media; multiplas leituras do mesmo ponto
+// somam, e pluviometros sem coleta naquele dia entram com 0 na media.
 const NH_GAUGES=new Set([
  'LOTE 01 SEDE',
  'LOTE 01 X KPS',
@@ -38,8 +38,7 @@ function mobileRainDashboard(gauges,readings,now=new Date()){
   byId.set(gauge.id,group);
   groupIds[group].add(gauge.id);
  }
- const dailySums={nh:0,giles:0};
- const dailyRecorded={nh:new Set(),giles:new Set()};
+ const dailyByGroup={nh:new Map(),giles:new Map()};
  for(const reading of readings){
   const mm=Number(reading.mm);
   const at=new Date(reading.at);
@@ -48,17 +47,29 @@ function mobileRainDashboard(gauges,readings,now=new Date()){
   const readingDay=asDay(at);
   if(readingDay.slice(0,7)===month)
    monthly.set(reading.gaugeId,(monthly.get(reading.gaugeId)||0)+mm);
-  if(readingDay!==day)continue;
-  dailySums[group]+=mm;
-  dailyRecorded[group].add(reading.gaugeId);
+  let collection=dailyByGroup[group].get(readingDay);
+  if(!collection){
+   collection={sum:0,measured:new Set()};
+   dailyByGroup[group].set(readingDay,collection);
+  }
+  collection.sum+=mm;
+  collection.measured.add(reading.gaugeId);
  }
  const daily={};
  for(const group of ['nh','giles']){
   const count=groupIds[group].size;
-  daily[group]={mean:count?dailySums[group]/count:0,count,
-   measured:dailyRecorded[group].size};
+  const days=dailyByGroup[group];
+  const lastDay=[...days.keys()].sort().at(-1)||null;
+  const last=lastDay?days.get(lastDay):null;
+  daily[group]={mean:count&&last?last.sum/count:0,count,
+   measured:last?last.measured.size:0,day:lastDay};
  }
  return {monthly,daily};
+}
+function lastCollectionLabel(day,now=new Date()){
+ if(!day)return 'Sem coleta';
+ if(day===asDay(now))return 'Hoje';
+ return 'Coleta '+day.slice(8,10)+'/'+day.slice(5,7);
 }
 
 // O Android compilado e navegadores de celular mostram somente o registro rapido.
@@ -308,12 +319,12 @@ function render(){
        <div class="mobile-rain-stat">
          <span class="mobile-rain-title">MÉDIA SEDE NH</span>
          <strong>${fmt(rain.daily.nh.mean)} <small>mm</small></strong>
-         <span class="mobile-rain-note">Hoje · ${rain.daily.nh.measured}/${rain.daily.nh.count} coletados</span>
+         <span class="mobile-rain-note">${lastCollectionLabel(rain.daily.nh.day)} · ${rain.daily.nh.measured}/${rain.daily.nh.count} coletados</span>
        </div>
        <div class="mobile-rain-stat">
          <span class="mobile-rain-title">MÉDIA GILES</span>
          <strong>${fmt(rain.daily.giles.mean)} <small>mm</small></strong>
-         <span class="mobile-rain-note">Hoje · ${rain.daily.giles.measured}/${rain.daily.giles.count} coletados</span>
+         <span class="mobile-rain-note">${lastCollectionLabel(rain.daily.giles.day)} · ${rain.daily.giles.measured}/${rain.daily.giles.count} coletados</span>
        </div>
      </div>
      <div class="quick-list-heading"><h2>PLUVIÔMETROS</h2><span>ACUMULADO MENSAL</span></div>
